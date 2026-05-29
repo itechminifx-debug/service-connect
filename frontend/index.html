@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Connect | Find Trusted Service Providers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 30%, rgba(0, 200, 255, 0.08), transparent 50%);
+            animation: rotate 25s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .floating-shapes {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 50%;
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .shape-1 { width: 300px; height: 300px; top: -150px; right: -100px; animation-delay: 0s; }
+        .shape-2 { width: 200px; height: 200px; bottom: -100px; left: -50px; animation-delay: 5s; }
+        .shape-3 { width: 150px; height: 150px; top: 50%; left: 20%; animation-delay: 10s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-30px) rotate(10deg); }
+        }
+
+        /* Main Container */
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 1200px;
+            margin: 20px;
+        }
+
+        /* Split Layout */
+        .login-wrapper {
+            display: flex;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Left Side - Brand Section */
+        .brand-section {
+            flex: 1;
+            padding: 48px;
+            background: linear-gradient(135deg, rgba(0, 200, 255, 0.15), rgba(0, 232, 160, 0.05));
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 40px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #00c8ff, #00e8a0);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .logo-text {
+            font-size: 24px;
+            font-weight: 800;
+            color: white;
+        }
+
+        .logo-text span {
+            background: linear-gradient(135deg, #00c8ff, #00e8a0);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .tagline {
+            font-size: 36px;
+            font-weight: 800;
+            color: white;
+            line-height: 1.2;
+            margin-bottom: 20px;
+        }
+
+        .tagline span {
+            background: linear-gradient(135deg, #00c8ff, #00e8a0);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .description {
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.6;
+            margin-bottom: 40px;
+        }
+
+        .features {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .feature-icon {
+            width: 28px;
+            height: 28px;
+            background: rgba(0, 200, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #00c8ff;
+        }
+
+        /* Right Side - Login Form */
+        .form-section {
+            flex: 0.8;
+            padding: 48px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .form-header {
+            margin-bottom: 32px;
+        }
+
+        .form-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .form-subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+
+        /* Toggle Buttons */
+        .auth-tabs {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 32px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px;
+            border-radius: 60px;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 50px;
+            transition: all 0.3s;
+        }
+
+        .auth-tab.active {
+            background: linear-gradient(135deg, #00c8ff, #00e8a0);
+            color: #0f0c29;
+        }
+
+        /* Form Groups */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+
+        .input-group:focus-within {
+            border-color: #00c8ff;
+            box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.1);
+        }
+
+        .input-icon {
+            padding: 0 16px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .input-field {
+            flex: 1;
+            padding: 16px 16px 16px 0;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 15px;
+            outline: none;
+        }
+
+        .input-field::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* User Type Selector */
+        .user-type-group {
+            margin-bottom: 24px;
+        }
+
+        .user-type-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 13px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .user-type-options {
+            display: flex;
+            gap: 12px;
+        }
+
+        .user-type-option {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .user-type-option.selected {
+            background: rgba(0, 200, 255, 0.15);
+            border-color: #00c8ff;
+        }
+
+        .user-type-option .icon {
+            font-size: 20px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .user-type-option .label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Submit Button */
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #00c8ff, #00e8a0);
+            border: none;
+            border-radius: 16px;
+            color: #0f0c29;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 200, 255, 0.4);
+        }
+
+        /* Message */
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 13px;
+            display: none;
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            display: block;
+        }
+
+        .message.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+            color: #6ee7b7;
+            display: block;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .login-wrapper {
+                flex-direction: column;
+            }
+            .brand-section {
+                padding: 32px;
+                text-align: center;
+            }
+            .tagline {
+                font-size: 28px;
+            }
+            .features {
+                display: none;
+            }
+            .form-section {
+                padding: 32px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .form-section {
+                padding: 24px;
+            }
+            .tagline {
+                font-size: 24px;
+            }
+            .user-type-options {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+    <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+    </div>
+
+    <div class="container">
+        <div class="login-wrapper">
+            <!-- Left Side - Brand Section -->
+            <div class="brand-section">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-handshake"></i>
+                    </div>
+                    <div class="logo-text">Service<span>Connect</span></div>
+                </div>
+                <div class="tagline">
+                    Find Trusted <span>Service Providers</span><br>in Your Area
+                </div>
+                <div class="description">
+                    Connect with verified professionals for plumbing, electrical, cleaning, tutoring, and more. Get quotes, compare prices, and hire with confidence.
+                </div>
+                <div class="features">
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-check"></i></div>
+                        <span>Verified & Trusted Professionals</span>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-check"></i></div>
+                        <span>Get Multiple Quotes for Free</span>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-check"></i></div>
+                        <span>Secure Payments & 24/7 Support</span>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-check"></i></div>
+                        <span>100% Satisfaction Guarantee</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side - Login Form -->
+            <div class="form-section">
+                <div class="form-header">
+                    <div class="form-title" id="formTitle">Welcome Back</div>
+                    <div class="form-subtitle" id="formSubtitle">Login to your account to continue</div>
+                </div>
+
+                <!-- Auth Tabs -->
+                <div class="auth-tabs">
+                    <button class="auth-tab" id="loginTab" onclick="showLoginForm()">Login</button>
+                    <button class="auth-tab" id="registerTab" onclick="showRegisterForm()">Register</button>
+                </div>
+
+                <!-- User Type Selector (Only for Register) -->
+                <div id="userTypeGroup" class="user-type-group" style="display: none;">
+                    <div class="user-type-label">I want to...</div>
+                    <div class="user-type-options">
+                        <div class="user-type-option" data-type="seeker" onclick="selectUserType('seeker')">
+                            <span class="icon">🔧</span>
+                            <span class="label">Hire a Professional</span>
+                        </div>
+                        <div class="user-type-option" data-type="provider" onclick="selectUserType('provider')">
+                            <span class="icon">👔</span>
+                            <span class="label">Offer My Services</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Login Form -->
+                <div id="loginForm">
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-envelope"></i></span>
+                            <input type="email" id="loginEmail" class="input-field" placeholder="Email address">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-lock"></i></span>
+                            <input type="password" id="loginPassword" class="input-field" placeholder="Password">
+                        </div>
+                    </div>
+                    <button class="submit-btn" onclick="handleLogin()">Login →</button>
+                </div>
+
+                <!-- Register Form -->
+                <div id="registerForm" style="display: none;">
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-user"></i></span>
+                            <input type="text" id="regFullName" class="input-field" placeholder="Full name *">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-envelope"></i></span>
+                            <input type="email" id="regEmail" class="input-field" placeholder="Email address *">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-phone"></i></span>
+                            <input type="tel" id="regPhone" class="input-field" placeholder="Phone number">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-lock"></i></span>
+                            <input type="password" id="regPassword" class="input-field" placeholder="Password * (min 6 characters)">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="input-group">
+                            <span class="input-icon"><i class="fas fa-map-marker-alt"></i></span>
+                            <input type="text" id="regLocation" class="input-field" placeholder="Your location (e.g., Accra)">
+                        </div>
+                    </div>
+                    <button class="submit-btn" onclick="handleRegister()">Create Account →</button>
+                </div>
+
+                <div id="message" class="message"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '';
+        let selectedUserType = 'seeker';
+
+        // Set default selected user type
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default active tab to Login
+            showLoginForm();
+            // Set default selected user type
+            const seekerOption = document.querySelector('.user-type-option[data-type="seeker"]');
+            if (seekerOption) {
+                seekerOption.classList.add('selected');
+            }
+        });
+
+        function showLoginForm() {
+            // Update tab styles
+            document.getElementById('loginTab').classList.add('active');
+            document.getElementById('registerTab').classList.remove('active');
+            
+            // Show/hide forms
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('userTypeGroup').style.display = 'none';
+            
+            // Update titles
+            document.getElementById('formTitle').innerText = 'Welcome Back';
+            document.getElementById('formSubtitle').innerText = 'Login to your account to continue';
+            
+            hideMessage();
+        }
+
+        function showRegisterForm() {
+            // Update tab styles
+            document.getElementById('registerTab').classList.add('active');
+            document.getElementById('loginTab').classList.remove('active');
+            
+            // Show/hide forms
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            document.getElementById('userTypeGroup').style.display = 'block';
+            
+            // Update titles
+            document.getElementById('formTitle').innerText = 'Create Account';
+            document.getElementById('formSubtitle').innerText = 'Join ServiceConnect today';
+            
+            hideMessage();
+        }
+
+        function selectUserType(type) {
+            selectedUserType = type;
+            document.querySelectorAll('.user-type-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            event.target.closest('.user-type-option').classList.add('selected');
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showMessage('Please enter email and password', 'error');
+                return;
+            }
+            
+            showMessage('Logging in...', 'success');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    showMessage('Login successful! Redirecting...', 'success');
+                    setTimeout(() => {
+                        if (data.user.user_type === 'provider') {
+                            window.location.href = 'provider-dashboard.html';
+                        } else if (data.user.user_type === 'seeker') {
+                            window.location.href = 'seeker-dashboard.html';
+                        } else {
+                            window.location.href = 'admin-dashboard.html';
+                        }
+                    }, 1000);
+                } else {
+                    showMessage(data.message || 'Login failed', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showMessage('Error connecting to server. Make sure the backend is running.', 'error');
+            }
+        }
+
+        async function handleRegister() {
+            const full_name = document.getElementById('regFullName').value;
+            const email = document.getElementById('regEmail').value;
+            const phone = document.getElementById('regPhone').value;
+            const password = document.getElementById('regPassword').value;
+            const location = document.getElementById('regLocation').value;
+            
+            if (!full_name || !email || !password) {
+                showMessage('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showMessage('Password must be at least 6 characters', 'error');
+                return;
+            }
+            
+            showMessage('Creating account...', 'success');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        full_name,
+                        email,
+                        phone,
+                        password,
+                        location,
+                        user_type: selectedUserType
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    showMessage('Account created successfully! Redirecting...', 'success');
+                    setTimeout(() => {
+                        if (data.user.user_type === 'provider') {
+                            window.location.href = 'provider-dashboard.html';
+                        } else {
+                            window.location.href = 'seeker-dashboard.html';
+                        }
+                    }, 1000);
+                } else {
+                    showMessage(data.message || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                showMessage('Error connecting to server. Make sure the backend is running.', 'error');
+            }
+        }
+
+        function showMessage(msg, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.textContent = msg;
+            msgDiv.className = `message ${type}`;
+            msgDiv.style.display = 'block';
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function hideMessage() {
+            const msgDiv = document.getElementById('message');
+            msgDiv.style.display = 'none';
+        }
+
+        // Enter key to submit
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleLogin();
+        });
+        document.getElementById('regPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleRegister();
+        });
+    </script>
+</body>
+</html>
