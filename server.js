@@ -1268,6 +1268,29 @@ app.post('/api/messages/offer', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// Get unread message count for current user
+app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+    try {
+        let result;
+        if (req.user.user_type === 'seeker') {
+            result = await pool.query(
+                'SELECT SUM(seeker_unread_count) as total FROM conversations WHERE seeker_id = $1',
+                [req.user.id]
+            );
+        } else {
+            result = await pool.query(
+                'SELECT SUM(provider_unread_count) as total FROM conversations WHERE provider_id = $1',
+                [req.user.id]
+            );
+        }
+        const unreadCount = parseInt(result.rows[0].total) || 0;
+        res.json({ success: true, unread_count: unreadCount });
+    } catch (error) {
+        console.error('Get unread count error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`

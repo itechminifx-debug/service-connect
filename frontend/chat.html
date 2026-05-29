@@ -344,6 +344,12 @@
 
         // Initial load
         loadConversations();
+// Mark conversation as read when you open it
+async function markConversationAsRead(conversationId) {
+    await apiCall(`/api/conversations/${conversationId}/read`, { method: 'PUT' });
+    loadUnreadCount(); // Update the badge
+}
+
     </script>
 </body>
 </html>

@@ -301,45 +301,62 @@
 
 
 
-// Request permission for browser notifications
+// ============ NOTIFICATION SYSTEM ============
+
+// Load unread message count and show badge
+async function loadUnreadCount() {
+    try {
+        const result = await apiCall('/api/messages/unread-count');
+        console.log('Unread count response:', result); // Debug log
+        
+        if (result.success && result.unread_count > 0) {
+            const badge = document.getElementById('unreadBadge');
+            if (badge) {
+                badge.style.display = 'inline';
+                badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
+            }
+            
+            // Update browser tab title
+            document.title = `(${result.unread_count}) Service Connect`;
+            
+            // Optional: Show browser notification
+            if (Notification.permission === 'granted' && result.unread_count > 0) {
+                // Only notify once per session
+                if (!window.hasNotified && result.unread_count > 0) {
+                    new Notification('New Message!', {
+                        body: `You have ${result.unread_count} unread message(s)`,
+                        icon: '/favicon.ico'
+                    });
+                    window.hasNotified = true;
+                    setTimeout(() => { window.hasNotified = false; }, 30000);
+                }
+            }
+        } else {
+            const badge = document.getElementById('unreadBadge');
+            if (badge) badge.style.display = 'none';
+            document.title = 'Service Connect';
+        }
+    } catch (error) {
+        console.error('Error loading unread count:', error);
+    }
+}
+
+// Request notification permission
 async function requestNotificationPermission() {
     if ('Notification' in window) {
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-            console.log('Notifications enabled');
+            console.log('✅ Notifications enabled');
         }
     }
 }
 
-// Check for new messages and show notification
-let lastMessageCount = 0;
-
-async function checkForNewMessages() {
-    const result = await apiCall('/api/messages/unread-count');
-    if (result.success && result.unread_count > 0 && result.unread_count > lastMessageCount) {
-        // Show browser notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('New Message!', {
-                body: `You have ${result.unread_count} new message(s)`,
-                icon: '/favicon.ico'
-            });
-        }
-        
-        // Play sound (optional - uncomment if you want)
-        // const audio = new Audio('/notification.mp3');
-        // audio.play();
-    }
-    lastMessageCount = result.unread_count || 0;
-}
-
-// Call this when page loads
+// Call these when page loads
 requestNotificationPermission();
+loadUnreadCount();
 
-// Check more frequently for notifications (every 5 seconds)
-setInterval(() => {
-    loadUnreadCount();
-    checkForNewMessages();
-}, 5000);
+// Check for new messages every 5 seconds
+setInterval(loadUnreadCount, 5000);
 
     </script>
 </body>
