@@ -7,17 +7,28 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Database connection
+// ==================== STATIC FILE SERVING (FIXED FOR RENDER) ====================
+// Serve static files from current directory (where server.js is located)
+app.use(express.static(__dirname));
+
+// Also try to serve from frontend folder if it exists (for local development)
+app.use(express.static(path.join(__dirname, 'frontend')));
+
+// ==================== DATABASE CONNECTION ====================
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.NODE_ENV === 'production' 
+        ? { rejectUnauthorized: false } 
+        : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
 });
 
 pool.connect((err) => {
@@ -692,7 +703,7 @@ app.get('/api/provider/hire-requests', authenticateToken, async (req, res) => {
     }
 });
 
-// Accept or reject direct hire request (FIXED - no updated_at column)
+// Accept or reject direct hire request
 app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
         return res.status(403).json({ success: false, message: 'Only providers can respond' });
@@ -762,6 +773,32 @@ app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
     }
 });
 
+// Get seeker's direct hires
+app.get('/api/seeker/direct-hires', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'seeker') {
+        return res.status(403).json({ success: false, message: 'Only seekers can access this' });
+    }
+    
+    try {
+        const result = await pool.query(
+            `SELECT dh.*, 
+                    u.full_name as provider_name, 
+                    u.rating as provider_rating,
+                    ps.title as service_title
+             FROM direct_hires dh
+             JOIN users u ON dh.provider_id = u.id
+             JOIN provider_services ps ON dh.service_id = ps.id
+             WHERE dh.customer_id = $1
+             ORDER BY dh.created_at DESC`,
+            [req.user.id]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get seeker direct hires error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ==================== DASHBOARD STATS ====================
 app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     try {
@@ -809,423 +846,76 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Service Connect Platform is running!' });
 });
 
-// ==================== SERVE FRONTEND ====================
+// ==================== SERVE FRONTEND (FIXED FOR RENDER) ====================
+// Root route - serve index.html
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend', 'index.html'));
+    // Try multiple possible locations for index.html
+    const possiblePaths = [
+        path.join(__dirname, 'index.html'),
+        path.join(__dirname, 'frontend', 'index.html'),
+        path.join(__dirname, 'public', 'index.html')
+    ];
+    
+    for (const filePath of possiblePaths) {
+        try {
+            if (require('fs').existsSync(filePath)) {
+                return res.sendFile(filePath);
+            }
+        } catch(e) {}
+    }
+    
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Service Connect Platform</title></head>
+        <body>
+            <h1>🚀 Service Connect Platform</h1>
+            <p>API is running!</p>
+            <p>📋 Available endpoints:</p>
+            <ul>
+                <li><a href="/api/health">/api/health</a> - Health check</li>
+                <li><a href="/api/categories">/api/categories</a> - View categories</li>
+            </ul>
+            <p>⚠️ Frontend files not found. Make sure HTML files are in the root directory.</p>
+        </body>
+        </html>
+    `);
 });
 
+// Serve HTML files directly from root directory
 app.get('/:page.html', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend', `${req.params.page}.html`));
-});
-
-// Get seeker's direct hires
-app.get('/api/seeker/direct-hires', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'seeker') {
-        return res.status(403).json({ success: false, message: 'Only seekers can access this' });
+    const pageName = req.params.page;
+    const possiblePaths = [
+        path.join(__dirname, `${pageName}.html`),
+        path.join(__dirname, 'frontend', `${pageName}.html`),
+        path.join(__dirname, 'public', `${pageName}.html`)
+    ];
+    
+    for (const filePath of possiblePaths) {
+        try {
+            if (require('fs').existsSync(filePath)) {
+                return res.sendFile(filePath);
+            }
+        } catch(e) {}
     }
     
-    try {
-        const result = await pool.query(
-            `SELECT dh.*, 
-                    u.full_name as provider_name, 
-                    u.rating as provider_rating,
-                    ps.title as service_title
-             FROM direct_hires dh
-             JOIN users u ON dh.provider_id = u.id
-             JOIN provider_services ps ON dh.service_id = ps.id
-             WHERE dh.customer_id = $1
-             ORDER BY dh.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get seeker direct hires error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ============ PROVIDER DASHBOARD ENDPOINTS ============
-
-// 1. Get all available jobs (for providers to bid on)
-app.get('/api/jobs', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT j.*, c.name as category_name, c.icon as category_icon,
-                    (SELECT COUNT(*) FROM bids WHERE job_id = j.id) as bid_count
-             FROM jobs j
-             JOIN categories c ON j.category_id = c.id
-             WHERE j.status = 'open'
-             ORDER BY j.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get jobs error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 2. Place a bid on a job
-app.post('/api/jobs/:jobId/bids', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can place bids' });
-    }
-    
-    const { jobId } = req.params;
-    const { amount, estimated_days, message } = req.body;
-    
-    try {
-        // Check if already bid on this job
-        const existingBid = await pool.query(
-            'SELECT id FROM bids WHERE job_id = $1 AND provider_id = $2',
-            [jobId, req.user.id]
-        );
-        
-        if (existingBid.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'You already bid on this job' });
-        }
-        
-        const result = await pool.query(
-            `INSERT INTO bids (job_id, provider_id, amount, estimated_days, message)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING id`,
-            [jobId, req.user.id, amount, estimated_days, message || null]
-        );
-        
-        res.json({ success: true, bidId: result.rows[0].id });
-    } catch (error) {
-        console.error('Place bid error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 3. Get provider's bids
-app.get('/api/provider/bids', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json([]);
-    }
-    
-    try {
-        const result = await pool.query(
-            `SELECT b.*, j.title as job_title, j.budget as job_budget
-             FROM bids b
-             JOIN jobs j ON b.job_id = j.id
-             WHERE b.provider_id = $1
-             ORDER BY b.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get provider bids error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 4. Accept a bid (seeker accepts provider's bid)
-app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'seeker') {
-        return res.status(403).json({ success: false, message: 'Only seekers can accept bids' });
-    }
-    
-    const { bidId } = req.params;
-    
-    try {
-        // Get bid details
-        const bidResult = await pool.query(
-            `SELECT b.*, j.seeker_id, j.id as job_id
-             FROM bids b
-             JOIN jobs j ON b.job_id = j.id
-             WHERE b.id = $1`,
-            [bidId]
-        );
-        
-        if (bidResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Bid not found' });
-        }
-        
-        const bid = bidResult.rows[0];
-        
-        if (bid.seeker_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'Not your job' });
-        }
-        
-        // Update bid status
-        await pool.query(
-            'UPDATE bids SET status = $1 WHERE id = $2',
-            ['accepted', bidId]
-        );
-        
-        // Update job status to assigned
-        await pool.query(
-            'UPDATE jobs SET status = $1, assigned_provider_id = $2 WHERE id = $3',
-            ['assigned', bid.provider_id, bid.job_id]
-        );
-        
-        // Reject other bids on this job
-        await pool.query(
-            `UPDATE bids SET status = 'rejected' 
-             WHERE job_id = $1 AND id != $2 AND status = 'pending'`,
-            [bid.job_id, bidId]
-        );
-        
-        res.json({ success: true, message: 'Bid accepted!' });
-    } catch (error) {
-        console.error('Accept bid error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 5. Get provider's accepted jobs (My Jobs tab)
-app.get('/api/provider/jobs', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json([]);
-    }
-    
-    try {
-        const result = await pool.query(
-            `SELECT j.id, j.title as job_title, j.status as job_status,
-                    b.amount as agreed_amount, b.estimated_days,
-                    u.full_name as seeker_name, u.phone as seeker_phone,
-                    b.status as bid_status
-             FROM bids b
-             JOIN jobs j ON b.job_id = j.id
-             JOIN users u ON j.seeker_id = u.id
-             WHERE b.provider_id = $1 AND b.status = 'accepted'
-             ORDER BY j.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get provider jobs error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 6. Mark job as complete (provider)
-app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { jobId } = req.params;
-    const { status } = req.body;
-    
-    try {
-        // Verify this job belongs to the provider
-        const verifyResult = await pool.query(
-            `SELECT j.id FROM jobs j
-             JOIN bids b ON b.job_id = j.id
-             WHERE j.id = $1 AND b.provider_id = $2 AND b.status = 'accepted'`,
-            [jobId, req.user.id]
-        );
-        
-        if (verifyResult.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'Job not found or not assigned to you' });
-        }
-        
-        await pool.query(
-            'UPDATE jobs SET status = $1 WHERE id = $2',
-            [status === 'completed' ? 'completed' : 'assigned', jobId]
-        );
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Update job status error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 7. Get provider's services
-app.get('/api/provider/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json([]);
-    }
-    
-    try {
-        const result = await pool.query(
-            `SELECT ps.*, c.name as category_name, c.icon as category_icon
-             FROM provider_services ps
-             JOIN categories c ON ps.category_id = c.id
-             WHERE ps.provider_id = $1
-             ORDER BY ps.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get provider services error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 8. Add provider service
-app.post('/api/provider/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { category_id, title, description, price, price_type, experience_years } = req.body;
-    
-    try {
-        const result = await pool.query(
-            `INSERT INTO provider_services (provider_id, category_id, title, description, price, price_type, experience_years)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id`,
-            [req.user.id, category_id, title, description, price, price_type || 'fixed', experience_years || null]
-        );
-        
-        res.json({ success: true, serviceId: result.rows[0].id });
-    } catch (error) {
-        console.error('Add service error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 9. Delete provider service
-app.delete('/api/provider/services/:serviceId', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { serviceId } = req.params;
-    
-    try {
-        await pool.query(
-            'DELETE FROM provider_services WHERE id = $1 AND provider_id = $2',
-            [serviceId, req.user.id]
-        );
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Delete service error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 10. Get hire requests for provider (direct hires)
-app.get('/api/provider/hire-requests', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json([]);
-    }
-    
-    try {
-        const result = await pool.query(
-            `SELECT dh.*, 
-                    u.full_name as customer_name, 
-                    u.phone as customer_phone,
-                    ps.title as service_title
-             FROM direct_hires dh
-             JOIN users u ON dh.customer_id = u.id
-             JOIN provider_services ps ON dh.service_id = ps.id
-             WHERE dh.provider_id = $1 AND dh.status = 'pending'
-             ORDER BY dh.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get hire requests error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 11. Respond to direct hire request
-app.put('/api/direct-hire/:hireId/respond', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { hireId } = req.params;
-    const { status } = req.body;
-    
-    try {
-        await pool.query(
-            'UPDATE direct_hires SET status = $1 WHERE id = $2 AND provider_id = $3',
-            [status, hireId, req.user.id]
-        );
-        
-        // If accepted, create a job record? Or track separately
-        if (status === 'accepted') {
-            // Optionally create a job record or tracking entry
-            console.log(`Direct hire ${hireId} accepted by provider ${req.user.id}`);
-        }
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Respond to hire error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// 12. Get dashboard stats
-app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
-    try {
-        let stats = {};
-        
-        if (req.user.user_type === 'provider') {
-            // Provider stats
-            const jobsResult = await pool.query(
-                `SELECT COUNT(*) as total_jobs,
-                        SUM(CASE WHEN j.status = 'completed' THEN 1 ELSE 0 END) as completed_jobs,
-                        SUM(b.amount) as total_earnings
-                 FROM bids b
-                 JOIN jobs j ON b.job_id = j.id
-                 WHERE b.provider_id = $1 AND b.status = 'accepted'`,
-                [req.user.id]
-            );
-            
-            const bidsResult = await pool.query(
-                'SELECT COUNT(*) as total_bids FROM bids WHERE provider_id = $1',
-                [req.user.id]
-            );
-            
-            stats = { ...jobsResult.rows[0], total_bids: parseInt(bidsResult.rows[0].total_bids) };
-        } else {
-            // Seeker stats
-            const jobsResult = await pool.query(
-                'SELECT COUNT(*) as total_jobs FROM jobs WHERE seeker_id = $1',
-                [req.user.id]
-            );
-            
-            const completedResult = await pool.query(
-                'SELECT COUNT(*) as completed_jobs FROM jobs WHERE seeker_id = $1 AND status = $2',
-                [req.user.id, 'completed']
-            );
-            
-            const bidsResult = await pool.query(
-                `SELECT COUNT(*) as total_bids_received
-                 FROM bids b
-                 JOIN jobs j ON b.job_id = j.id
-                 WHERE j.seeker_id = $1`,
-                [req.user.id]
-            );
-            
-            stats = {
-                total_jobs: parseInt(jobsResult.rows[0].total_jobs),
-                completed_jobs: parseInt(completedResult.rows[0].completed_jobs),
-                total_bids_received: parseInt(bidsResult.rows[0].total_bids_received)
-            };
-        }
-        
-        res.json(stats);
-    } catch (error) {
-        console.error('Get stats error:', error);
-        res.status(500).json({ error: error.message });
-    }
+    res.status(404).send(`Page ${pageName}.html not found`);
 });
 
 // ==================== START SERVER ====================
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
 ║     🔗 SERVICE CONNECT PLATFORM                                   ║
 ║     Connecting Service Providers with Customers                   ║
 ║                                                                   ║
-║     ✅ Server running on http://localhost:${PORT}                   ║
+║     ✅ Server running on port ${PORT}                               ║
 ║     ✅ Database connected                                          ║
 ║     ✅ Direct Hire API Ready                                       ║
 ║                                                                   ║
-║     🔐 Test Credentials:                                          ║
-║     Register as Provider or Seeker                                ║
+║     🌐 Access your app at:                                        ║
+║     http://localhost:${PORT} or https://your-app.onrender.com      ║
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
     `);
