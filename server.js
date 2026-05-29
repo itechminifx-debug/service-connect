@@ -901,7 +901,373 @@ app.get('/:page.html', (req, res) => {
     
     res.status(404).send(`Page ${pageName}.html not found`);
 });
+// ==================== MESSAGING SYSTEM ====================
 
+// Helper function to get or create conversation
+async function getOrCreateConversation(seekerId, providerId, jobId = null, directHireId = null) {
+    // Check if conversation already exists
+    let query = `
+        SELECT * FROM conversations 
+        WHERE seeker_id = $1 AND provider_id = $2
+    `;
+    let params = [seekerId, providerId];
+    
+    if (jobId) {
+        query += ` AND job_id = $3`;
+        params.push(jobId);
+    } else if (directHireId) {
+        query += ` AND direct_hire_id = $3`;
+        params.push(directHireId);
+    }
+    
+    let result = await pool.query(query, params);
+    
+    if (result.rows.length > 0) {
+        return result.rows[0];
+    }
+    
+    // Create new conversation
+    const insertResult = await pool.query(
+        `INSERT INTO conversations (seeker_id, provider_id, job_id, direct_hire_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         RETURNING *`,
+        [seekerId, providerId, jobId || null, directHireId || null]
+    );
+    
+    return insertResult.rows[0];
+}
+
+// 1. Get or create conversation
+app.post('/api/conversations', authenticateToken, async (req, res) => {
+    const { provider_id, job_id, direct_hire_id } = req.body;
+    
+    if (req.user.user_type !== 'seeker') {
+        return res.status(403).json({ success: false, message: 'Only seekers can initiate conversations' });
+    }
+    
+    try {
+        const conversation = await getOrCreateConversation(
+            req.user.id, 
+            provider_id, 
+            job_id || null, 
+            direct_hire_id || null
+        );
+        
+        res.json({ success: true, conversation });
+    } catch (error) {
+        console.error('Get/create conversation error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 2. Send a message
+app.post('/api/messages', authenticateToken, async (req, res) => {
+    const { conversation_id, receiver_id, message, message_type, offer_amount } = req.body;
+    
+    if (!message && message_type !== 'offer') {
+        return res.status(400).json({ success: false, message: 'Message is required' });
+    }
+    
+    try {
+        let conversation;
+        let receiverId = receiver_id;
+        
+        if (conversation_id) {
+            // Get existing conversation
+            const convResult = await pool.query(
+                'SELECT * FROM conversations WHERE id = $1',
+                [conversation_id]
+            );
+            
+            if (convResult.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Conversation not found' });
+            }
+            
+            conversation = convResult.rows[0];
+            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
+        } else {
+            // Create new conversation
+            if (!receiver_id) {
+                return res.status(400).json({ success: false, message: 'Receiver ID required for new conversation' });
+            }
+            
+            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
+            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
+            
+            conversation = await getOrCreateConversation(seekerId, providerId);
+        }
+        
+        // Insert message
+        const result = await pool.query(
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, message_type, offer_amount, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+             RETURNING *`,
+            [conversation.id, req.user.id, receiverId, message, message_type || 'text', offer_amount || null]
+        );
+        
+        // Update conversation last message and timestamps
+        const updateQuery = `
+            UPDATE conversations 
+            SET last_message = $1, 
+                last_message_time = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP,
+                ${req.user.user_type === 'seeker' ? 'seeker_unread_count = seeker_unread_count + 1' : 'provider_unread_count = provider_unread_count + 1'}
+            WHERE id = $2
+        `;
+        
+        await pool.query(updateQuery, [message || `💰 Offer: GHS ${offer_amount}`, conversation.id]);
+        
+        // Get the complete message with user details
+        const messageWithSender = await pool.query(
+            `SELECT m.*, 
+                    u.full_name as sender_name, 
+                    u.user_type as sender_type
+             FROM messages m
+             JOIN users u ON m.sender_id = u.id
+             WHERE m.id = $1`,
+            [result.rows[0].id]
+        );
+        
+        res.json({ success: true, message: messageWithSender.rows[0] });
+    } catch (error) {
+        console.error('Send message error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 3. Get messages for a conversation
+app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
+    const { conversationId } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+    
+    try {
+        // Verify user has access to this conversation
+        const convResult = await pool.query(
+            'SELECT * FROM conversations WHERE id = $1',
+            [conversationId]
+        );
+        
+        if (convResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+        
+        const conversation = convResult.rows[0];
+        
+        if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+        
+        // Get messages
+        const messagesResult = await pool.query(
+            `SELECT m.*, 
+                    u.full_name as sender_name, 
+                    u.user_type as sender_type
+             FROM messages m
+             JOIN users u ON m.sender_id = u.id
+             WHERE m.conversation_id = $1
+             ORDER BY m.created_at ASC
+             LIMIT $2 OFFSET $3`,
+            [conversationId, limit, offset]
+        );
+        
+        // Mark messages as read
+        await pool.query(
+            `UPDATE messages 
+             SET is_read = true, read_at = CURRENT_TIMESTAMP
+             WHERE conversation_id = $1 
+               AND receiver_id = $2 
+               AND is_read = false`,
+            [conversationId, req.user.id]
+        );
+        
+        // Reset unread count
+        if (req.user.user_type === 'seeker') {
+            await pool.query(
+                'UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1',
+                [conversationId]
+            );
+        } else {
+            await pool.query(
+                'UPDATE conversations SET provider_unread_count = 0 WHERE id = $1',
+                [conversationId]
+            );
+        }
+        
+        res.json({
+            success: true,
+            messages: messagesResult.rows,
+            conversation: conversation
+        });
+    } catch (error) {
+        console.error('Get messages error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 4. Get all conversations for current user
+app.get('/api/conversations', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        let params = [req.user.id];
+        
+        if (req.user.user_type === 'seeker') {
+            query = `
+                SELECT c.*, 
+                       u.full_name as other_user_name, 
+                       u.user_type as other_user_type,
+                       u.rating as other_user_rating,
+                       jp.title as job_title,
+                       ps.title as service_title
+                FROM conversations c
+                JOIN users u ON c.provider_id = u.id
+                LEFT JOIN job_posts jp ON c.job_id = jp.id
+                LEFT JOIN provider_services ps ON c.direct_hire_id = ps.id
+                WHERE c.seeker_id = $1
+                ORDER BY c.updated_at DESC
+            `;
+        } else {
+            query = `
+                SELECT c.*, 
+                       u.full_name as other_user_name, 
+                       u.user_type as other_user_type,
+                       u.rating as other_user_rating,
+                       jp.title as job_title,
+                       ps.title as service_title
+                FROM conversations c
+                JOIN users u ON c.seeker_id = u.id
+                LEFT JOIN job_posts jp ON c.job_id = jp.id
+                LEFT JOIN provider_services ps ON c.direct_hire_id = ps.id
+                WHERE c.provider_id = $1
+                ORDER BY c.updated_at DESC
+            `;
+        }
+        
+        const result = await pool.query(query, params);
+        
+        // Add unread count for current user
+        const conversationsWithUnread = result.rows.map(conv => ({
+            ...conv,
+            unread_count: req.user.user_type === 'seeker' 
+                ? conv.seeker_unread_count 
+                : conv.provider_unread_count
+        }));
+        
+        res.json({ success: true, conversations: conversationsWithUnread });
+    } catch (error) {
+        console.error('Get conversations error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 5. Mark conversation as read
+app.put('/api/conversations/:conversationId/read', authenticateToken, async (req, res) => {
+    const { conversationId } = req.params;
+    
+    try {
+        if (req.user.user_type === 'seeker') {
+            await pool.query(
+                'UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1',
+                [conversationId]
+            );
+        } else {
+            await pool.query(
+                'UPDATE conversations SET provider_unread_count = 0 WHERE id = $1',
+                [conversationId]
+            );
+        }
+        
+        await pool.query(
+            `UPDATE messages 
+             SET is_read = true, read_at = CURRENT_TIMESTAMP
+             WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
+            [conversationId, req.user.id]
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Mark read error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 6. Get unread message count
+app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        let params = [req.user.id];
+        
+        if (req.user.user_type === 'seeker') {
+            query = 'SELECT SUM(seeker_unread_count) as total FROM conversations WHERE seeker_id = $1';
+        } else {
+            query = 'SELECT SUM(provider_unread_count) as total FROM conversations WHERE provider_id = $1';
+        }
+        
+        const result = await pool.query(query, params);
+        
+        res.json({ 
+            success: true, 
+            unread_count: parseInt(result.rows[0].total) || 0 
+        });
+    } catch (error) {
+        console.error('Get unread count error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 7. Send offer message (special message type for negotiations)
+app.post('/api/messages/offer', authenticateToken, async (req, res) => {
+    const { conversation_id, receiver_id, offer_amount, message } = req.body;
+    
+    if (!offer_amount || offer_amount <= 0) {
+        return res.status(400).json({ success: false, message: 'Valid offer amount is required' });
+    }
+    
+    try {
+        let conversation;
+        let receiverId = receiver_id;
+        
+        if (conversation_id) {
+            const convResult = await pool.query(
+                'SELECT * FROM conversations WHERE id = $1',
+                [conversation_id]
+            );
+            conversation = convResult.rows[0];
+            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
+        } else {
+            if (!receiver_id) {
+                return res.status(400).json({ success: false, message: 'Receiver ID required' });
+            }
+            
+            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
+            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
+            conversation = await getOrCreateConversation(seekerId, providerId);
+        }
+        
+        // Send offer message
+        const result = await pool.query(
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, message_type, offer_amount, created_at)
+             VALUES ($1, $2, $3, $4, 'offer', $5, CURRENT_TIMESTAMP)
+             RETURNING *`,
+            [conversation.id, req.user.id, receiverId, message || `Offering GHS ${offer_amount}`, offer_amount]
+        );
+        
+        // Update conversation
+        await pool.query(
+            `UPDATE conversations 
+             SET last_message = $1, 
+                 last_message_time = CURRENT_TIMESTAMP,
+                 updated_at = CURRENT_TIMESTAMP,
+                 ${req.user.user_type === 'seeker' ? 'seeker_unread_count = seeker_unread_count + 1' : 'provider_unread_count = provider_unread_count + 1'}
+             WHERE id = $2`,
+            [`💰 Offer: GHS ${offer_amount}`, conversation.id]
+        );
+        
+        res.json({ success: true, message: result.rows[0] });
+    } catch (error) {
+        console.error('Send offer error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
