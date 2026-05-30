@@ -1216,7 +1216,23 @@ app.get('/api/auth/create-test-user', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-
+app.get('/api/check-user/:email', async (req, res) => {
+    const { email } = req.params;
+    try {
+        const result = await pool.query('SELECT email, password_hash, user_type FROM users WHERE email = $1', [email]);
+        if (result.rows.length > 0) {
+            res.json({ 
+                exists: true, 
+                user: result.rows[0],
+                hash_length: result.rows[0].password_hash?.length
+            });
+        } else {
+            res.json({ exists: false });
+        }
+    } catch (error) {
+        res.json({ error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
