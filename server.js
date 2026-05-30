@@ -9,27 +9,49 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ==================== MIDDLEWARE ====================
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// ==================== DATABASE CONNECTION ====================
+// ==================== DATABASE CONNECTION (FIXED FOR RENDER/NEON) ====================
+console.log('🔍 Checking DATABASE_URL:', process.env.DATABASE_URL ? '✅ Present' : '❌ Missing');
+
+if (!process.env.DATABASE_URL) {
+    console.error('❌ FATAL: DATABASE_URL environment variable is not set!');
+    process.exit(1);
+}
+
+// Fix the connection string for Neon
+let connectionString = process.env.DATABASE_URL;
+if (!connectionString.includes('sslmode') && process.env.NODE_ENV === 'production') {
+    connectionString += (connectionString.includes('?') ? '&' : '?') + 'sslmode=require';
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: connectionString,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 15000,
+    keepAlive: true,
 });
 
-pool.connect((err) => {
+// Test database connection
+pool.connect((err, client, release) => {
     if (err) {
         console.error('❌ Database connection error:', err.message);
+        console.error('💡 Make sure DATABASE_URL is correct in Render environment variables');
     } else {
         console.log('✅ PostgreSQL connected successfully');
+        release();
         createTables();
     }
+});
+
+// Handle connection errors
+pool.on('error', (err) => {
+    console.error('Unexpected database error:', err.message);
 });
 
 async function createTables() {
@@ -53,6 +75,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Users table ready');
 
         // Categories table
         await client.query(`
@@ -65,6 +88,7 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
+        console.log('✅ Categories table ready');
 
         // Job Posts table
         await client.query(`
@@ -82,6 +106,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Job posts table ready');
 
         // Bids table
         await client.query(`
@@ -96,6 +121,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Bids table ready');
 
         // Provider Services table
         await client.query(`
@@ -112,6 +138,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Provider services table ready');
 
         // Direct Hires table
         await client.query(`
@@ -126,6 +153,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Direct hires table ready');
 
         // Accepted Jobs table
         await client.query(`
@@ -143,6 +171,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
+        console.log('✅ Accepted jobs table ready');
 
         // Conversations table for chat
         await client.query(`
@@ -161,6 +190,7 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
+        console.log('✅ Conversations table ready');
 
         // Messages table
         await client.query(`
@@ -178,6 +208,7 @@ async function createTables() {
                 offer_amount DECIMAL(10,2)
             )
         `);
+        console.log('✅ Messages table ready');
 
         // Insert default categories
         const catCount = await client.query('SELECT COUNT(*) FROM categories');
@@ -524,18 +555,15 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     const { status } = req.body;
     
     try {
-        console.log(`[DEBUG] Marking job ${jobId} as ${status} for provider ${req.user.id}`);
-        
-        // First check if the job exists and belongs to this provider
+        // Check if job exists and belongs to this provider
         const checkJob = await pool.query(
-            `SELECT id, job_post_id, provider_id, status, agreed_amount 
+            `SELECT id, job_post_id, provider_id, status 
              FROM accepted_jobs 
              WHERE id = $1 AND provider_id = $2`,
             [jobId, req.user.id]
         );
         
         if (checkJob.rows.length === 0) {
-            console.log(`[DEBUG] Job ${jobId} not found for provider ${req.user.id}`);
             return res.status(404).json({ 
                 success: false, 
                 message: 'Job not found or not assigned to you' 
@@ -551,41 +579,26 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
             });
         }
         
-        // Update the accepted_jobs table
-        const updateResult = await pool.query(
+        // Update accepted_jobs
+        await pool.query(
             `UPDATE accepted_jobs 
-             SET status = $1, 
-                 completed_at = CURRENT_TIMESTAMP 
-             WHERE id = $2 AND provider_id = $3
-             RETURNING *`,
+             SET status = $1, completed_at = CURRENT_TIMESTAMP 
+             WHERE id = $2 AND provider_id = $3`,
             [status, jobId, req.user.id]
         );
         
-        console.log(`[DEBUG] Updated accepted_jobs:`, updateResult.rows[0]);
-        
-        // If there's a job_post_id, update that status too
+        // Update job_posts if exists
         if (currentJob.job_post_id) {
             await pool.query(
-                `UPDATE job_posts 
-                 SET status = $1 
-                 WHERE id = $2`,
+                `UPDATE job_posts SET status = $1 WHERE id = $2`,
                 ['completed', currentJob.job_post_id]
             );
-            console.log(`[DEBUG] Updated job_posts id ${currentJob.job_post_id} to completed`);
         }
         
-        res.json({ 
-            success: true, 
-            message: 'Job marked as complete successfully!'
-        });
-        
+        res.json({ success: true, message: 'Job marked as complete!' });
     } catch (error) {
-        console.error('[ERROR] Update job status error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: error.message,
-            message: 'Database error occurred. Please try again.'
-        });
+        console.error('Update job status error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -753,7 +766,6 @@ async function getOrCreateConversation(seekerId, providerId, jobId = null, direc
     return insertResult.rows[0];
 }
 
-// Seeker initiates conversation
 app.post('/api/conversations', authenticateToken, async (req, res) => {
     const { provider_id, job_id, direct_hire_id } = req.body;
     
@@ -769,7 +781,6 @@ app.post('/api/conversations', authenticateToken, async (req, res) => {
     }
 });
 
-// Provider initiates conversation
 app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
     const { seeker_id, job_id, direct_hire_id } = req.body;
     
@@ -785,7 +796,6 @@ app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
     }
 });
 
-// Send a message
 app.post('/api/messages', authenticateToken, async (req, res) => {
     const { conversation_id, receiver_id, message, message_type, offer_amount } = req.body;
     
@@ -839,7 +849,6 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     }
 });
 
-// Get messages for a conversation
 app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
     const { conversationId } = req.params;
     
@@ -865,7 +874,6 @@ app.get('/api/conversations/:conversationId/messages', authenticateToken, async 
             [conversationId]
         );
         
-        // Mark messages as read
         await pool.query(
             `UPDATE messages 
              SET is_read = true, read_at = CURRENT_TIMESTAMP
@@ -873,7 +881,6 @@ app.get('/api/conversations/:conversationId/messages', authenticateToken, async 
             [conversationId, req.user.id]
         );
         
-        // Reset unread count
         if (req.user.user_type === 'seeker') {
             await pool.query('UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1', [conversationId]);
         } else {
@@ -887,7 +894,6 @@ app.get('/api/conversations/:conversationId/messages', authenticateToken, async 
     }
 });
 
-// Get all conversations for current user
 app.get('/api/conversations', authenticateToken, async (req, res) => {
     try {
         let query;
@@ -929,7 +935,6 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
     }
 });
 
-// Get unread message count
 app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
     try {
         let result;
@@ -952,7 +957,6 @@ app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
     }
 });
 
-// Send an offer message
 app.post('/api/messages/offer', authenticateToken, async (req, res) => {
     const { conversation_id, receiver_id, offer_amount, message } = req.body;
     
@@ -1033,10 +1037,6 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==================== SERVE FRONTEND (FIXED) ====================
-// Serve static files from root directory
-app.use(express.static(__dirname));
-
-// Specific routes for HTML files
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -1061,29 +1061,21 @@ app.get('/chat.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
-// Catch-all for other static files
-app.get('*', (req, res) => {
-    const filePath = path.join(__dirname, req.path);
-    res.sendFile(filePath, err => {
-        if (err) {
-            res.status(404).send('File not found');
-        }
-    });
-});
-
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
 ║     🔗 SERVICE CONNECT PLATFORM                                   ║
+║     Connecting Service Providers with Customers                   ║
 ║                                                                   ║
 ║     ✅ Server running on port ${PORT}                               ║
 ║     ✅ Database connected                                          ║
 ║     ✅ Chat System Ready                                           ║
 ║     ✅ Mark Complete Fixed                                         ║
+║     ✅ Static Files Serving Fixed                                  ║
 ║                                                                   ║
-║     🌐 Visit: http://localhost:${PORT}                             ║
+║     🌐 Visit: https://your-app.onrender.com                       ║
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
     `);
