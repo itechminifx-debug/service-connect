@@ -1233,6 +1233,36 @@ app.get('/api/check-user/:email', async (req, res) => {
         res.json({ error: error.message });
     }
 });
+// Create admin user using the server's registration logic
+app.get('/api/create-admin-now', async (req, res) => {
+    try {
+        const bcrypt = require('bcryptjs');
+        
+        // Hash password using bcryptjs
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash('admin123', salt);
+        
+        // Delete existing admin
+        await pool.query("DELETE FROM users WHERE email = 'admin@serviceconnect.com'");
+        
+        // Create new admin with properly hashed password
+        const result = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, user_type, is_verified, created_at)
+             VALUES ($1, $2, $3, $4, true, NOW())
+             RETURNING id, email, full_name, user_type`,
+            ['admin@serviceconnect.com', hashedPassword, 'System Admin', 'admin']
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Admin created successfully!',
+            user: result.rows[0],
+            password: 'admin123'
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
