@@ -1301,42 +1301,72 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     const { status } = req.body;
     
     try {
-        // Get the accepted job
-        const jobResult = await pool.query(
-            `SELECT aj.*, jp.seeker_id 
-             FROM accepted_jobs aj
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             WHERE aj.id = $1 AND aj.provider_id = $2`,
+        console.log(`Attempting to mark job ${jobId} as ${status} for provider ${req.user.id}`);
+        
+        // First, check if this job exists and belongs to the provider
+        const checkJob = await pool.query(
+            `SELECT id, job_post_id, provider_id, status 
+             FROM accepted_jobs 
+             WHERE id = $1 AND provider_id = $2`,
             [jobId, req.user.id]
         );
         
-        if (jobResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found' });
+        if (checkJob.rows.length === 0) {
+            console.log(`Job ${jobId} not found for provider ${req.user.id}`);
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Job not found or not assigned to you' 
+            });
         }
         
-        // Update accepted_jobs status
-        await pool.query(
+        const currentJob = checkJob.rows[0];
+        
+        if (currentJob.status === 'completed') {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Job is already marked as complete' 
+            });
+        }
+        
+        // Update the accepted_jobs table
+        const updateResult = await pool.query(
             `UPDATE accepted_jobs 
-             SET status = $1, completed_at = CURRENT_TIMESTAMP 
-             WHERE id = $2 AND provider_id = $3`,
+             SET status = $1, 
+                 completed_at = CURRENT_TIMESTAMP 
+             WHERE id = $2 AND provider_id = $3
+             RETURNING *`,
             [status, jobId, req.user.id]
         );
         
+        console.log(`Updated accepted_jobs:`, updateResult.rows[0]);
+        
         // If there's a job_post_id, update that status too
-        const acceptedJob = jobResult.rows[0];
-        if (acceptedJob.job_post_id) {
+        if (currentJob.job_post_id) {
             await pool.query(
-                'UPDATE job_posts SET status = $1 WHERE id = $2',
-                ['completed', acceptedJob.job_post_id]
+                `UPDATE job_posts 
+                 SET status = $1 
+                 WHERE id = $2`,
+                ['completed', currentJob.job_post_id]
             );
+            console.log(`Updated job_posts id ${currentJob.job_post_id} to completed`);
         }
         
-        res.json({ success: true, message: 'Job marked as complete' });
+        res.json({ 
+            success: true, 
+            message: 'Job marked as complete successfully!',
+            job: updateResult.rows[0]
+        });
+        
     } catch (error) {
         console.error('Update job status error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            message: 'Database error occurred'
+        });
     }
 });
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
