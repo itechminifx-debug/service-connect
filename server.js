@@ -1371,6 +1371,32 @@ app.post('/api/admin/reset-password', authenticateToken, isAdmin, async (req, re
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// TEST ENDPOINT - Create a test user with proper password
+// Remove this after testing!
+app.post('/api/auth/create-test-user', async (req, res) => {
+    try {
+        const { email, password, full_name, user_type } = req.body;
+        
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        
+        const result = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, user_type, is_verified)
+             VALUES ($1, $2, $3, $4, true)
+             ON CONFLICT (email) DO UPDATE SET password_hash = $2
+             RETURNING id, email, full_name, user_type`,
+            [email, hashedPassword, full_name, user_type]
+        );
+        
+        res.json({ 
+            success: true, 
+            message: `User ${email} created/updated with password: ${password}`,
+            user: result.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
