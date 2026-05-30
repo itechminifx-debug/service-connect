@@ -1322,6 +1322,55 @@ app.get('/admin-dashboard.html', (req, res) => {
         res.status(404).send('admin-dashboard.html not found. Creating default admin dashboard at /api/commission/earnings');
     }
 });
+// Password reset endpoint (for testing)
+app.post('/api/auth/reset-password', authenticateToken, async (req, res) => {
+    const { new_password } = req.body;
+    
+    if (!new_password || new_password.length < 6) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(new_password, salt);
+        
+        await pool.query(
+            'UPDATE users SET password_hash = $1 WHERE id = $2',
+            [hashedPassword, req.user.id]
+        );
+        
+        res.json({ success: true, message: 'Password updated successfully!' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Admin endpoint to reset any user's password
+app.post('/api/admin/reset-password', authenticateToken, isAdmin, async (req, res) => {
+    const { email, new_password } = req.body;
+    
+    if (!email || !new_password || new_password.length < 6) {
+        return res.status(400).json({ success: false, message: 'Email and valid password required' });
+    }
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(new_password, salt);
+        
+        const result = await pool.query(
+            'UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING id, email',
+            [hashedPassword, email]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        res.json({ success: true, message: `Password reset for ${email}` });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
