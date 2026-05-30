@@ -337,6 +337,19 @@
                 loadStats();
             }
             else { showToast('Failed to respond', 'error'); }
+            // Add to loadStats function in provider-dashboard.html
+async function loadStats() {
+    const stats = await apiCall('/api/dashboard/stats');
+    const earnings = await apiCall('/api/provider/earnings');
+    
+    document.getElementById('statsGrid').innerHTML = `
+        <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
+        <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
+        <div class="stat-card"><div class="stat-info"><h4>Total Earnings</h4><div class="stat-number">GHS ${(earnings.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
+        <div class="stat-card"><div class="stat-info"><h4>Commission Paid</h4><div class="stat-number">GHS ${(earnings.total_commission_paid || 0).toLocaleString()}</div></div><div class="stat-icon">🏦</div></div>
+        <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
+    `;
+}
         }
 
         // ============ STATS ============

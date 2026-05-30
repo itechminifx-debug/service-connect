@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0f0c29; color: white; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 40px 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 25px; backdrop-filter: blur(10px); }
+        .stat-card h3 { font-size: 14px; opacity: 0.7; margin-bottom: 10px; }
+        .stat-card .value { font-size: 36px; font-weight: 700; }
+        .card { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 25px; margin-bottom: 30px; }
+        .card h2 { margin-bottom: 20px; font-size: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { background: rgba(255,255,255,0.05); }
+        .commission-rate { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .commission-rate input { padding: 12px 20px; border-radius: 12px; border: none; font-size: 16px; width: 150px; }
+        .commission-rate button { padding: 12px 24px; background: #00e8a0; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; position: fixed; top: 20px; right: 20px; }
+    </style>
+</head>
+<body>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+    <div class="container">
+        <h1 style="margin-bottom: 30px;">💰 Admin Commission Dashboard</h1>
+        
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><h3>Total Platform Earnings</h3><div class="value" id="totalEarnings">GHS 0</div></div>
+            <div class="stat-card"><h3>Current Commission Rate</h3><div class="value" id="currentRate">10%</div></div>
+            <div class="stat-card"><h3>Completed Jobs</h3><div class="value" id="totalJobs">0</div></div>
+        </div>
+        
+        <div class="card">
+            <h2>⚙️ Commission Settings</h2>
+            <div class="commission-rate">
+                <input type="number" id="commissionRate" step="0.5" min="0" max="100" value="10">
+                <button onclick="updateCommissionRate()">Update Commission Rate</button>
+                <p style="font-size: 14px; opacity: 0.7;">Note: New rate applies to future transactions only</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Recent Commission Transactions</h2>
+            <div style="overflow-x: auto;">
+                <table id="transactionsTable">
+                    <thead>
+                        <tr><th>Job Title</th><th>Amount</th><th>Commission</th><th>Provider</th><th>Customer</th><th>Date</th></tr>
+                    </thead>
+                    <tbody id="transactionsList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = '';
+        let token = localStorage.getItem('token');
+        
+        if (!token) window.location.href = 'index.html';
+        
+        async function apiCall(endpoint, options = {}) {
+            const response = await fetch(API_URL + endpoint, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            return response.json();
+        }
+        
+        async function loadStats() {
+            const result = await apiCall('/api/commission/earnings');
+            if (result.success) {
+                document.getElementById('totalEarnings').innerHTML = `GHS ${result.total_earnings.toLocaleString()}`;
+                document.getElementById('totalJobs').innerHTML = result.recent_transactions.length;
+                
+                const tbody = document.getElementById('transactionsList');
+                tbody.innerHTML = result.recent_transactions.map(t => `
+                    <tr>
+                        <td>${t.job_title || 'Direct Hire'}</td>
+                        <td>GHS ${t.agreed_amount}</td>
+                        <td style="color: #f59e0b;">GHS ${t.platform_commission}</td>
+                        <td>${t.provider_name}</td>
+                        <td>${t.seeker_name}</td>
+                        <td>${new Date(t.completed_at).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+        
+        async function loadCommissionRate() {
+            const result = await apiCall('/api/commission/rate');
+            if (result.success) {
+                document.getElementById('currentRate').innerHTML = `${result.commission_rate}%`;
+                document.getElementById('commissionRate').value = result.commission_rate;
+            }
+        }
+        
+        async function updateCommissionRate() {
+            const rate = document.getElementById('commissionRate').value;
+            const result = await apiCall('/api/commission/rate', {
+                method: 'PUT',
+                body: JSON.stringify({ rate: parseFloat(rate) })
+            });
+            if (result.success) {
+                alert(result.message);
+                loadCommissionRate();
+            } else {
+                alert(result.message || 'Failed to update');
+            }
+        }
+        
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+        
+        loadStats();
+        loadCommissionRate();
+    </script>
+</body>
+</html>
