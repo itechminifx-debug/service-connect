@@ -4,54 +4,57 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ==================== MIDDLEWARE ====================
+// Middleware
 app.use(cors());
 app.use(express.json());
+
+// ==================== STATIC FILE SERVING (FIXED FOR FRONTEND FOLDER) ====================
+// Serve static files from frontend folder
+const frontendPath = path.join(__dirname, 'frontend');
+const publicPath = path.join(__dirname, 'public');
+
+// Check which path exists
+if (fs.existsSync(frontendPath)) {
+    app.use(express.static(frontendPath));
+    console.log('✅ Serving static files from: frontend/');
+} else if (fs.existsSync(publicPath)) {
+    app.use(express.static(publicPath));
+    console.log('✅ Serving static files from: public/');
+} else {
+    app.use(express.static(__dirname));
+    console.log('✅ Serving static files from: root directory');
+}
+
+// Also serve from root as fallback
 app.use(express.static(__dirname));
 
-// ==================== DATABASE CONNECTION (FIXED FOR RENDER/NEON) ====================
-console.log('🔍 Checking DATABASE_URL:', process.env.DATABASE_URL ? '✅ Present' : '❌ Missing');
-
+// ==================== DATABASE CONNECTION ====================
 if (!process.env.DATABASE_URL) {
-    console.error('❌ FATAL: DATABASE_URL environment variable is not set!');
+    console.error('❌ DATABASE_URL not set!');
     process.exit(1);
 }
 
-// Fix the connection string for Neon
-let connectionString = process.env.DATABASE_URL;
-if (!connectionString.includes('sslmode') && process.env.NODE_ENV === 'production') {
-    connectionString += (connectionString.includes('?') ? '&' : '?') + 'sslmode=require';
-}
-
 const pool = new Pool({
-    connectionString: connectionString,
+    connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    max: 20,
+    max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
-    keepAlive: true,
+    connectionTimeoutMillis: 10000,
 });
 
-// Test database connection
-pool.connect((err, client, release) => {
+pool.connect((err) => {
     if (err) {
         console.error('❌ Database connection error:', err.message);
-        console.error('💡 Make sure DATABASE_URL is correct in Render environment variables');
     } else {
         console.log('✅ PostgreSQL connected successfully');
-        release();
         createTables();
     }
-});
-
-// Handle connection errors
-pool.on('error', (err) => {
-    console.error('Unexpected database error:', err.message);
 });
 
 async function createTables() {
@@ -75,7 +78,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Users table ready');
 
         // Categories table
         await client.query(`
@@ -88,7 +90,6 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
-        console.log('✅ Categories table ready');
 
         // Job Posts table
         await client.query(`
@@ -106,7 +107,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Job posts table ready');
 
         // Bids table
         await client.query(`
@@ -121,7 +121,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Bids table ready');
 
         // Provider Services table
         await client.query(`
@@ -138,7 +137,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Provider services table ready');
 
         // Direct Hires table
         await client.query(`
@@ -153,7 +151,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Direct hires table ready');
 
         // Accepted Jobs table
         await client.query(`
@@ -171,7 +168,6 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Accepted jobs table ready');
 
         // Conversations table for chat
         await client.query(`
@@ -190,7 +186,6 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
-        console.log('✅ Conversations table ready');
 
         // Messages table
         await client.query(`
@@ -208,7 +203,6 @@ async function createTables() {
                 offer_amount DECIMAL(10,2)
             )
         `);
-        console.log('✅ Messages table ready');
 
         // Insert default categories
         const catCount = await client.query('SELECT COUNT(*) FROM categories');
@@ -243,7 +237,7 @@ const authenticateToken = (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
     
     if (!token) {
-        return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+        return res.status(401).json({ success: false, message: 'Access denied' });
     }
     
     try {
@@ -251,17 +245,13 @@ const authenticateToken = (req, res, next) => {
         req.user = decoded;
         next();
     } catch (error) {
-        return res.status(403).json({ success: false, message: 'Invalid or expired token' });
+        return res.status(403).json({ success: false, message: 'Invalid token' });
     }
 };
 
 // ==================== AUTH ROUTES ====================
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, full_name, phone, location, user_type } = req.body;
-    
-    if (!email || !password || !full_name || !user_type) {
-        return res.status(400).json({ success: false, message: 'All required fields must be filled' });
-    }
     
     try {
         const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -545,7 +535,7 @@ app.get('/api/provider/jobs', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================== MARK JOB AS COMPLETE (FIXED) ====================
+// ==================== MARK JOB AS COMPLETE ====================
 app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
         return res.status(403).json({ success: false, message: 'Only providers can update job status' });
@@ -555,7 +545,6 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     const { status } = req.body;
     
     try {
-        // Check if job exists and belongs to this provider
         const checkJob = await pool.query(
             `SELECT id, job_post_id, provider_id, status 
              FROM accepted_jobs 
@@ -564,22 +553,15 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
         );
         
         if (checkJob.rows.length === 0) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Job not found or not assigned to you' 
-            });
+            return res.status(404).json({ success: false, message: 'Job not found' });
         }
         
         const currentJob = checkJob.rows[0];
         
         if (currentJob.status === 'completed') {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Job is already marked as complete' 
-            });
+            return res.status(400).json({ success: false, message: 'Job already complete' });
         }
         
-        // Update accepted_jobs
         await pool.query(
             `UPDATE accepted_jobs 
              SET status = $1, completed_at = CURRENT_TIMESTAMP 
@@ -587,7 +569,6 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
             [status, jobId, req.user.id]
         );
         
-        // Update job_posts if exists
         if (currentJob.job_post_id) {
             await pool.query(
                 `UPDATE job_posts SET status = $1 WHERE id = $2`,
@@ -1036,29 +1017,88 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Service Connect Platform is running!' });
 });
 
-// ==================== SERVE FRONTEND (FIXED) ====================
+// ==================== SERVE FRONTEND HTML FILES (FIXED FOR FRONTEND FOLDER) ====================
+// Helper function to find HTML files
+function findHtmlFile(filename) {
+    const possiblePaths = [
+        path.join(__dirname, 'frontend', filename),
+        path.join(__dirname, 'public', filename),
+        path.join(__dirname, filename)
+    ];
+    
+    for (const filePath of possiblePaths) {
+        if (fs.existsSync(filePath)) {
+            return filePath;
+        }
+    }
+    return null;
+}
+
+// Root route
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    const filePath = findHtmlFile('index.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>Service Connect</title></head>
+            <body style="font-family: Arial; text-align: center; padding: 50px;">
+                <h1>🚀 Service Connect API</h1>
+                <p>Server is running but index.html not found.</p>
+                <p>Looking in: ${__dirname}/frontend/</p>
+                <p><a href="/api/health">API Health Check</a></p>
+            </body>
+            </html>
+        `);
+    }
 });
 
+// Serve specific HTML files
 app.get('/index.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    const filePath = findHtmlFile('index.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('index.html not found in frontend folder');
+    }
 });
 
 app.get('/seeker-dashboard.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'seeker-dashboard.html'));
+    const filePath = findHtmlFile('seeker-dashboard.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('seeker-dashboard.html not found');
+    }
 });
 
 app.get('/provider-dashboard.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'provider-dashboard.html'));
+    const filePath = findHtmlFile('provider-dashboard.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('provider-dashboard.html not found');
+    }
 });
 
 app.get('/marketplace.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'marketplace.html'));
+    const filePath = findHtmlFile('marketplace.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('marketplace.html not found');
+    }
 });
 
 app.get('/chat.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'chat.html'));
+    const filePath = findHtmlFile('chat.html');
+    if (filePath) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('chat.html not found');
+    }
 });
 
 // ==================== START SERVER ====================
@@ -1067,16 +1107,26 @@ app.listen(PORT, '0.0.0.0', () => {
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
 ║     🔗 SERVICE CONNECT PLATFORM                                   ║
-║     Connecting Service Providers with Customers                   ║
 ║                                                                   ║
 ║     ✅ Server running on port ${PORT}                               ║
 ║     ✅ Database connected                                          ║
 ║     ✅ Chat System Ready                                           ║
 ║     ✅ Mark Complete Fixed                                         ║
-║     ✅ Static Files Serving Fixed                                  ║
+║     ✅ Frontend folder detected                                    ║
 ║                                                                   ║
 ║     🌐 Visit: https://your-app.onrender.com                       ║
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
     `);
+    
+    // Debug: Show what files are available
+    console.log('\n📁 Available HTML files:');
+    const frontendDir = path.join(__dirname, 'frontend');
+    if (fs.existsSync(frontendDir)) {
+        const files = fs.readdirSync(frontendDir);
+        files.filter(f => f.endsWith('.html')).forEach(f => console.log(`   ✅ frontend/${f}`));
+    } else {
+        console.log('   ❌ frontend folder not found!');
+        console.log(`   Looking for: ${frontendDir}`);
+    }
 });
