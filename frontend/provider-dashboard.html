@@ -54,7 +54,8 @@
         .info-box p { color: #92400e; font-size: 14px; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
-        .button-group button { flex: 1; }
+        .button-group button { flex: 1; margin-top: 0; }
+        .badge-completed { background: #dbeafe; color: #2563eb; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -84,6 +85,7 @@
             <p>📌 <strong>How to get hired:</strong></p>
             <p>• <strong>Bid on Jobs:</strong> Browse "Available Jobs" → Place a bid → If seeker accepts, job appears in "My Jobs"</p>
             <p>• <strong>Direct Hire:</strong> Customers can hire you directly from Marketplace → Requests appear in "Hire Requests" → Accept to start working</p>
+            <p>• <strong>Complete Jobs:</strong> After finishing work, click "Mark Complete" to finish the job</p>
         </div>
 
         <div class="tabs">
@@ -174,8 +176,10 @@
                     const badge = document.getElementById('unreadBadge');
                     badge.style.display = 'inline';
                     badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
+                    document.title = `(${result.unread_count}) Service Connect`;
                 } else {
                     document.getElementById('unreadBadge').style.display = 'none';
+                    document.title = 'Service Connect';
                 }
             } catch(e) {}
         }
@@ -220,7 +224,7 @@
             container.innerHTML = bids.map(bid => `<div class="job-card"><span class="job-category">📄 Bid #${bid.id}</span><div class="job-title">${escapeHtml(bid.job_title)}</div><div class="job-details">Your bid: GHS ${bid.amount} | ${bid.estimated_days} days</div><div class="job-details">Status: ${bid.status === 'pending' ? '⏳ Pending' : bid.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}</div><div class="job-budget">💰 Budget: GHS ${bid.job_budget || 'Negotiable'}</div></div>`).join('');
         }
 
-        // ============ MY JOBS ============
+        // ============ MY JOBS (with WORKING Mark Complete button) ============
         async function loadMyJobs() {
             const jobs = await apiCall('/api/provider/jobs');
             const container = document.getElementById('myJobs');
@@ -229,19 +233,56 @@
                 <div class="job-card">
                     <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
                     <div class="job-title">${escapeHtml(job.job_title)}</div>
-                    <div class="job-details">Amount: GHS ${job.agreed_amount}</div>
-                    <div class="job-details">Customer: ${escapeHtml(job.seeker_name)} | 📞 ${job.seeker_phone || 'Not provided'}</div>
+                    <div class="job-details">💰 Agreed Amount: GHS ${job.agreed_amount}</div>
+                    <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)}</div>
+                    <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
+                    <div class="job-details">📅 Started: ${new Date(job.created_at).toLocaleDateString()}</div>
+                    ${job.status === 'completed' ? '<div class="badge-completed" style="margin-top:10px;">✅ Job Completed</div>' : ''}
                     <div class="button-group">
-                        ${job.status !== 'completed' ? `<button class="complete-btn" onclick="updateJobStatus(${job.id}, 'completed')">Mark Complete</button>` : ''}
+                        ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
                         <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})" style="background:#8b5cf6;">💬 Message Customer</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        async function updateJobStatus(jobId, status) {
-            const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-            if (result.success) { showToast('Job marked as complete!', 'success'); loadMyJobs(); loadStats(); }
+        // ============ MARK JOB AS COMPLETE - WORKING FUNCTION ============
+        async function markJobComplete(jobId) {
+            // Show confirmation dialog
+            const confirmed = confirm('⚠️ Are you sure you want to mark this job as COMPLETE?\n\nOnce marked complete, you cannot undo this action.\n\nThe job will be moved to completed status.');
+            
+            if (!confirmed) {
+                showToast('Job completion cancelled', 'info');
+                return;
+            }
+            
+            showToast('Processing...', 'info');
+            
+            try {
+                const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { 
+                    method: 'PUT', 
+                    body: JSON.stringify({ status: 'completed' }) 
+                });
+                
+                if (result.success) {
+                    showToast('✅ Job marked as complete! Earnings will be added to your account.', 'success');
+                    // Refresh all relevant sections
+                    await loadMyJobs();
+                    await loadStats();
+                    
+                    // Also refresh available jobs and bids if needed
+                    await loadAvailableJobs();
+                    await loadMyBids();
+                    
+                    // Optional: Send notification to customer (if you have notification system)
+                    console.log(`Job ${jobId} marked as complete by provider ${user?.id}`);
+                } else {
+                    showToast(result.message || '❌ Failed to mark job as complete', 'error');
+                }
+            } catch (error) {
+                console.error('Error marking job complete:', error);
+                showToast('Network error. Please try again.', 'error');
+            }
         }
 
         // ============ MY SERVICES ============
@@ -289,14 +330,24 @@
 
         async function respondToHire(hireId, status) {
             const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
-            if (result.success) { showToast(status === 'accepted' ? 'Hire request accepted! Job added to My Jobs.' : 'Hire request declined', 'success'); loadHireRequests(); loadMyJobs(); }
+            if (result.success) { 
+                showToast(status === 'accepted' ? 'Hire request accepted! Job added to My Jobs.' : 'Hire request declined', 'success'); 
+                loadHireRequests(); 
+                loadMyJobs(); 
+                loadStats();
+            }
             else { showToast('Failed to respond', 'error'); }
         }
 
         // ============ STATS ============
         async function loadStats() {
             const stats = await apiCall('/api/dashboard/stats');
-            document.getElementById('statsGrid').innerHTML = `<div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div><div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div><div class="stat-card"><div class="stat-info"><h4>Earnings</h4><div class="stat-number">GHS ${(stats.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div><div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>`;
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Earnings</h4><div class="stat-number">GHS ${(stats.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
+            `;
         }
 
         function showTab(tab) {
@@ -309,72 +360,20 @@
             event.target.classList.add('active');
         }
 
-        function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
+        function showToast(msg, type) { 
+            const t = document.getElementById('toast'); 
+            t.textContent = msg; 
+            t.style.backgroundColor = type === 'error' ? '#ef4444' : type === 'info' ? '#3b82f6' : '#10b981'; 
+            t.style.display = 'block'; 
+            setTimeout(() => t.style.display = 'none', 3000); 
+        }
+        
         function logout() { localStorage.clear(); window.location.href = 'index.html'; }
         function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
         setInterval(loadUnreadCount, 10000);
-        loadCategories(); loadDashboard();
-        
-
-
-// ============ NOTIFICATION SYSTEM ============
-
-// Load unread message count and show badge
-async function loadUnreadCount() {
-    try {
-        const result = await apiCall('/api/messages/unread-count');
-        console.log('Unread count response:', result); // Debug log
-        
-        if (result.success && result.unread_count > 0) {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) {
-                badge.style.display = 'inline';
-                badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-            }
-            
-            // Update browser tab title
-            document.title = `(${result.unread_count}) Service Connect`;
-            
-            // Optional: Show browser notification
-            if (Notification.permission === 'granted' && result.unread_count > 0) {
-                // Only notify once per session
-                if (!window.hasNotified && result.unread_count > 0) {
-                    new Notification('New Message!', {
-                        body: `You have ${result.unread_count} unread message(s)`,
-                        icon: '/favicon.ico'
-                    });
-                    window.hasNotified = true;
-                    setTimeout(() => { window.hasNotified = false; }, 30000);
-                }
-            }
-        } else {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) badge.style.display = 'none';
-            document.title = 'Service Connect';
-        }
-    } catch (error) {
-        console.error('Error loading unread count:', error);
-    }
-}
-
-// Request notification permission
-async function requestNotificationPermission() {
-    if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            console.log('✅ Notifications enabled');
-        }
-    }
-}
-
-// Call these when page loads
-requestNotificationPermission();
-loadUnreadCount();
-
-// Check for new messages every 5 seconds
-setInterval(loadUnreadCount, 5000);
-
+        loadCategories(); 
+        loadDashboard();
     </script>
 </body>
 </html>

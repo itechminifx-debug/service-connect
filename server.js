@@ -1291,6 +1291,52 @@ app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// Mark job as complete (provider)
+app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can update job status' });
+    }
+    
+    const { jobId } = req.params;
+    const { status } = req.body;
+    
+    try {
+        // Get the accepted job
+        const jobResult = await pool.query(
+            `SELECT aj.*, jp.seeker_id 
+             FROM accepted_jobs aj
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             WHERE aj.id = $1 AND aj.provider_id = $2`,
+            [jobId, req.user.id]
+        );
+        
+        if (jobResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Job not found' });
+        }
+        
+        // Update accepted_jobs status
+        await pool.query(
+            `UPDATE accepted_jobs 
+             SET status = $1, completed_at = CURRENT_TIMESTAMP 
+             WHERE id = $2 AND provider_id = $3`,
+            [status, jobId, req.user.id]
+        );
+        
+        // If there's a job_post_id, update that status too
+        const acceptedJob = jobResult.rows[0];
+        if (acceptedJob.job_post_id) {
+            await pool.query(
+                'UPDATE job_posts SET status = $1 WHERE id = $2',
+                ['completed', acceptedJob.job_post_id]
+            );
+        }
+        
+        res.json({ success: true, message: 'Job marked as complete' });
+    } catch (error) {
+        console.error('Update job status error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
