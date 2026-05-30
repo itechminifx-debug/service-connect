@@ -1032,8 +1032,16 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Service Connect Platform is running!' });
 });
 
-// ==================== SERVE FRONTEND ====================
+// ==================== SERVE FRONTEND (FIXED) ====================
+// Serve static files from root directory
+app.use(express.static(__dirname));
+
+// Specific routes for HTML files
 app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/index.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
@@ -1053,18 +1061,29 @@ app.get('/chat.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
 });
 
+// Catch-all for other static files
+app.get('*', (req, res) => {
+    const filePath = path.join(__dirname, req.path);
+    res.sendFile(filePath, err => {
+        if (err) {
+            res.status(404).send('File not found');
+        }
+    });
+});
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
 ║     🔗 SERVICE CONNECT PLATFORM                                   ║
-║     Connecting Service Providers with Customers                   ║
 ║                                                                   ║
 ║     ✅ Server running on port ${PORT}                               ║
 ║     ✅ Database connected                                          ║
 ║     ✅ Chat System Ready                                           ║
 ║     ✅ Mark Complete Fixed                                         ║
+║                                                                   ║
+║     🌐 Visit: http://localhost:${PORT}                             ║
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
     `);
