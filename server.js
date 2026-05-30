@@ -1148,6 +1148,74 @@ app.get('/admin-dashboard.html', (req, res) => {
         res.send('<h1>Admin Dashboard</h1><p>Create admin-dashboard.html file</p>');
     }
 });
+// DEBUG: Test login directly (REMOVE AFTER TESTING)
+app.post('/api/auth/debug-login', async (req, res) => {
+    const { email, password } = req.body;
+    
+    console.log('🔍 DEBUG LOGIN:', email, password);
+    
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        
+        if (result.rows.length === 0) {
+            return res.json({ success: false, message: 'User not found' });
+        }
+        
+        const user = result.rows[0];
+        console.log('User found:', user.email, user.user_type);
+        console.log('Stored hash:', user.password_hash);
+        
+        // Test hash directly
+        const isValid = await bcrypt.compare(password, user.password_hash);
+        console.log('Password valid:', isValid);
+        
+        if (isValid) {
+            const token = jwt.sign(
+                { id: user.id, email: user.email, user_type: user.user_type },
+                process.env.JWT_SECRET || 'mysecretkey123',
+                { expiresIn: '7d' }
+            );
+            res.json({ success: true, token, user: { id: user.id, email: user.email, full_name: user.full_name, user_type: user.user_type } });
+        } else {
+            res.json({ success: false, message: 'Invalid password' });
+        }
+    } catch (error) {
+        console.error('Debug login error:', error);
+        res.json({ success: false, error: error.message });
+    }
+});
+
+// DEBUG: Create test user directly
+app.get('/api/auth/create-test-user', async (req, res) => {
+    const email = 'test@user.com';
+    const password = 'test123';
+    const full_name = 'Test User';
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        
+        // Delete existing
+        await pool.query('DELETE FROM users WHERE email = $1', [email]);
+        
+        // Create new
+        const result = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, user_type, is_verified)
+             VALUES ($1, $2, $3, $4, true)
+             RETURNING id, email, full_name, user_type`,
+            [email, hashedPassword, full_name, 'seeker']
+        );
+        
+        res.json({ 
+            success: true, 
+            message: 'Test user created!',
+            credentials: { email: 'test@user.com', password: 'test123' },
+            user: result.rows[0]
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
