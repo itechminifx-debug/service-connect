@@ -968,6 +968,8 @@ app.get('/admin-dashboard.html', (req, res) => {
 });
 // ==================== ADMIN ENDPOINTS ====================
 
+// ==================== ADMIN ENDPOINTS ====================
+
 // Get all users (admin only)
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
@@ -983,15 +985,13 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
         
         const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
         const providers = result.rows.filter(u => u.user_type === 'provider').length;
-        const admins = result.rows.filter(u => u.user_type === 'admin').length;
         
         res.json({ 
             success: true, 
             users: result.rows,
             total: result.rows.length,
             seekers: seekers,
-            providers: providers,
-            admins: admins
+            providers: providers
         });
     } catch (error) {
         console.error('Error getting users:', error);
@@ -999,22 +999,40 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
     }
 });
 
-// Get all jobs (admin only)
+// Get all jobs (admin only) - FIXED
 app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
     }
     
     try {
-        const result = await pool.query(
-            `SELECT jp.*, u.full_name as seeker_name, u.email as seeker_email,
-                    (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count
-             FROM job_posts jp
-             LEFT JOIN users u ON jp.seeker_id = u.id
-             ORDER BY jp.created_at DESC
-             LIMIT 50`
-        );
-        res.json({ success: true, jobs: result.rows });
+        const result = await pool.query(`
+            SELECT 
+                jp.id,
+                jp.title,
+                jp.description,
+                jp.budget,
+                jp.location,
+                jp.status,
+                jp.views,
+                jp.created_at,
+                u.id as seeker_id,
+                u.full_name as seeker_name,
+                u.email as seeker_email,
+                (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count
+            FROM job_posts jp
+            LEFT JOIN users u ON jp.seeker_id = u.id
+            ORDER BY jp.created_at DESC
+            LIMIT 100
+        `);
+        
+        console.log(`📊 Admin: Found ${result.rows.length} jobs`);
+        
+        res.json({ 
+            success: true, 
+            jobs: result.rows,
+            count: result.rows.length
+        });
     } catch (error) {
         console.error('Error getting jobs:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -1028,36 +1046,41 @@ app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
     }
     
     try {
-        const result = await pool.query(
-            `SELECT 
+        const result = await pool.query(`
+            SELECT 
                 COUNT(*) as total,
                 COUNT(CASE WHEN status = 'open' THEN 1 END) as open,
                 COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned,
                 COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
-             FROM job_posts`
-        );
-        res.json({ success: true, ...result.rows[0] });
+            FROM job_posts
+        `);
+        
+        res.json({ 
+            success: true, 
+            total: parseInt(result.rows[0].total) || 0,
+            open: parseInt(result.rows[0].open) || 0,
+            assigned: parseInt(result.rows[0].assigned) || 0,
+            completed: parseInt(result.rows[0].completed) || 0
+        });
     } catch (error) {
         console.error('Error getting jobs stats:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Get commission earnings (admin only) - make sure this exists
+// Get commission earnings (admin only)
 app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
     }
     
     try {
-        // Get total earnings
         const totalResult = await pool.query(`
             SELECT COALESCE(SUM(platform_commission), 0) as total_earnings 
             FROM accepted_jobs 
             WHERE status = 'completed'
         `);
         
-        // Get recent transactions
         const recentResult = await pool.query(`
             SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
                    aj.completed_at, aj.status,
@@ -1092,7 +1115,6 @@ app.get('/api/commission/rate', authenticateToken, async (req, res) => {
         const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
         res.json({ success: true, commission_rate: rate });
     } catch (error) {
-        console.error('Error getting commission rate:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1119,8 +1141,26 @@ app.put('/api/commission/rate', authenticateToken, async (req, res) => {
         );
         res.json({ success: true, message: `Commission rate updated to ${rate}%` });
     } catch (error) {
-        console.error('Error updating commission rate:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Debug endpoint - check jobs (admin only)
+app.get('/api/debug/jobs', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ error: 'Admin only' });
+    }
+    
+    try {
+        const result = await pool.query('SELECT id, title, status, created_at FROM job_posts ORDER BY created_at DESC LIMIT 10');
+        const count = await pool.query('SELECT COUNT(*) FROM job_posts');
+        res.json({ 
+            success: true, 
+            total_jobs: parseInt(count.rows[0].count),
+            jobs: result.rows
+        });
+    } catch (error) {
+        res.json({ error: error.message });
     }
 });
 // ==================== START SERVER ====================
