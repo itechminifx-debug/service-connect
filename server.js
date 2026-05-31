@@ -1153,6 +1153,341 @@ app.get('/api/admin/services', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== REVIEWS & RATINGS SYSTEM ====================
+
+// Submit a review (after job completion)
+app.post('/api/reviews', authenticateToken, async (req, res) => {
+    const { job_id, reviewee_id, rating, comment } = req.body;
+    
+    if (!job_id || !reviewee_id || !rating) {
+        return res.status(400).json({ success: false, message: 'Job ID, reviewee, and rating are required' });
+    }
+    
+    if (rating < 1 || rating > 5) {
+        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+    
+    try {
+        // Check if job exists and is completed
+        const jobCheck = await pool.query(
+            `SELECT aj.*, jp.title 
+             FROM accepted_jobs aj
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             WHERE aj.id = $1 AND aj.status = 'completed'`,
+            [job_id]
+        );
+        
+        if (jobCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Job not found or not completed' });
+        }
+        
+        const job = jobCheck.rows[0];
+        
+        // Determine reviewer type and ensure user is part of the job
+        let reviewer_type;
+        if (req.user.id === job.seeker_id) {
+            reviewer_type = 'seeker';
+        } else if (req.user.id === job.provider_id) {
+            reviewer_type = 'provider';
+        } else {
+            return res.status(403).json({ success: false, message: 'You are not part of this job' });
+        }
+        
+        // Check if already reviewed
+        const existingReview = await pool.query(
+            'SELECT id FROM reviews WHERE job_id = $1 AND reviewer_id = $2',
+            [job_id, req.user.id]
+        );
+        
+        if (existingReview.rows.length > 0) {
+            return res.status(400).json({ success: false, message: 'You have already reviewed this job' });
+        }
+        
+        // Insert review
+        const result = await pool.query(
+            `INSERT INTO reviews (job_id, reviewer_id, reviewee_id, rating, comment, reviewer_type)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [job_id, req.user.id, reviewee_id, rating, comment || '', reviewer_type]
+        );
+        
+        // Update user's average rating
+        await updateUserRating(reviewee_id);
+        
+        res.json({ success: true, review: result.rows[0], message: 'Review submitted successfully!' });
+    } catch (error) {
+        console.error('Submit review error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update user's average rating
+async function updateUserRating(userId) {
+    const result = await pool.query(
+        `SELECT AVG(rating) as avg_rating, COUNT(*) as total 
+         FROM reviews 
+         WHERE reviewee_id = $1`,
+        [userId]
+    );
+    
+    const avgRating = parseFloat(result.rows[0].avg_rating) || 0;
+    const totalReviews = parseInt(result.rows[0].total) || 0;
+    
+    await pool.query(
+        'UPDATE users SET rating = $1, total_reviews = $2 WHERE id = $3',
+        [avgRating, totalReviews, userId]
+    );
+}
+
+// Get reviews for a user
+app.get('/api/reviews/user/:userId', authenticateToken, async (req, res) => {
+    const { userId } = req.params;
+    
+    try {
+        const result = await pool.query(
+            `SELECT r.*, 
+                    u.full_name as reviewer_name,
+                    u.user_type as reviewer_type,
+                    COALESCE(jp.title, ps.title, 'Job') as job_title
+             FROM reviews r
+             JOIN users u ON r.reviewer_id = u.id
+             LEFT JOIN accepted_jobs aj ON r.job_id = aj.id
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             LEFT JOIN provider_services ps ON aj.service_id = ps.id
+             WHERE r.reviewee_id = $1
+             ORDER BY r.created_at DESC
+             LIMIT 20`,
+            [userId]
+        );
+        
+        // Get average rating
+        const avgResult = await pool.query(
+            'SELECT rating, total_reviews FROM users WHERE id = $1',
+            [userId]
+        );
+        
+        res.json({ 
+            success: true, 
+            reviews: result.rows,
+            average_rating: avgResult.rows[0]?.rating || 0,
+            total_reviews: avgResult.rows[0]?.total_reviews || 0
+        });
+    } catch (error) {
+        console.error('Get reviews error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get jobs pending review for current user
+app.get('/api/reviews/pending', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        if (req.user.user_type === 'seeker') {
+            query = `
+                SELECT aj.id, aj.agreed_amount, aj.completed_at,
+                       COALESCE(jp.title, ps.title, 'Job') as job_title,
+                       u.full_name as other_party_name,
+                       u.id as other_party_id
+                FROM accepted_jobs aj
+                JOIN users u ON aj.provider_id = u.id
+                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+                LEFT JOIN provider_services ps ON aj.service_id = ps.id
+                WHERE aj.seeker_id = $1 
+                  AND aj.status = 'completed'
+                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
+                ORDER BY aj.completed_at DESC
+            `;
+        } else {
+            query = `
+                SELECT aj.id, aj.agreed_amount, aj.completed_at,
+                       COALESCE(jp.title, ps.title, 'Job') as job_title,
+                       u.full_name as other_party_name,
+                       u.id as other_party_id
+                FROM accepted_jobs aj
+                JOIN users u ON aj.seeker_id = u.id
+                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+                LEFT JOIN provider_services ps ON aj.service_id = ps.id
+                WHERE aj.provider_id = $1 
+                  AND aj.status = 'completed'
+                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
+                ORDER BY aj.completed_at DESC
+            `;
+        }
+        
+        const result = await pool.query(query, [req.user.id]);
+        res.json({ success: true, pending_reviews: result.rows });
+    } catch (error) {
+        console.error('Get pending reviews error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});// ==================== REVIEWS & RATINGS SYSTEM ====================
+
+// Submit a review (after job completion)
+app.post('/api/reviews', authenticateToken, async (req, res) => {
+    const { job_id, reviewee_id, rating, comment } = req.body;
+    
+    if (!job_id || !reviewee_id || !rating) {
+        return res.status(400).json({ success: false, message: 'Job ID, reviewee, and rating are required' });
+    }
+    
+    if (rating < 1 || rating > 5) {
+        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+    
+    try {
+        // Check if job exists and is completed
+        const jobCheck = await pool.query(
+            `SELECT aj.*, jp.title 
+             FROM accepted_jobs aj
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             WHERE aj.id = $1 AND aj.status = 'completed'`,
+            [job_id]
+        );
+        
+        if (jobCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Job not found or not completed' });
+        }
+        
+        const job = jobCheck.rows[0];
+        
+        // Determine reviewer type and ensure user is part of the job
+        let reviewer_type;
+        if (req.user.id === job.seeker_id) {
+            reviewer_type = 'seeker';
+        } else if (req.user.id === job.provider_id) {
+            reviewer_type = 'provider';
+        } else {
+            return res.status(403).json({ success: false, message: 'You are not part of this job' });
+        }
+        
+        // Check if already reviewed
+        const existingReview = await pool.query(
+            'SELECT id FROM reviews WHERE job_id = $1 AND reviewer_id = $2',
+            [job_id, req.user.id]
+        );
+        
+        if (existingReview.rows.length > 0) {
+            return res.status(400).json({ success: false, message: 'You have already reviewed this job' });
+        }
+        
+        // Insert review
+        const result = await pool.query(
+            `INSERT INTO reviews (job_id, reviewer_id, reviewee_id, rating, comment, reviewer_type)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [job_id, req.user.id, reviewee_id, rating, comment || '', reviewer_type]
+        );
+        
+        // Update user's average rating
+        await updateUserRating(reviewee_id);
+        
+        res.json({ success: true, review: result.rows[0], message: 'Review submitted successfully!' });
+    } catch (error) {
+        console.error('Submit review error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update user's average rating
+async function updateUserRating(userId) {
+    const result = await pool.query(
+        `SELECT AVG(rating) as avg_rating, COUNT(*) as total 
+         FROM reviews 
+         WHERE reviewee_id = $1`,
+        [userId]
+    );
+    
+    const avgRating = parseFloat(result.rows[0].avg_rating) || 0;
+    const totalReviews = parseInt(result.rows[0].total) || 0;
+    
+    await pool.query(
+        'UPDATE users SET rating = $1, total_reviews = $2 WHERE id = $3',
+        [avgRating, totalReviews, userId]
+    );
+}
+
+// Get reviews for a user
+app.get('/api/reviews/user/:userId', authenticateToken, async (req, res) => {
+    const { userId } = req.params;
+    
+    try {
+        const result = await pool.query(
+            `SELECT r.*, 
+                    u.full_name as reviewer_name,
+                    u.user_type as reviewer_type,
+                    COALESCE(jp.title, ps.title, 'Job') as job_title
+             FROM reviews r
+             JOIN users u ON r.reviewer_id = u.id
+             LEFT JOIN accepted_jobs aj ON r.job_id = aj.id
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             LEFT JOIN provider_services ps ON aj.service_id = ps.id
+             WHERE r.reviewee_id = $1
+             ORDER BY r.created_at DESC
+             LIMIT 20`,
+            [userId]
+        );
+        
+        // Get average rating
+        const avgResult = await pool.query(
+            'SELECT rating, total_reviews FROM users WHERE id = $1',
+            [userId]
+        );
+        
+        res.json({ 
+            success: true, 
+            reviews: result.rows,
+            average_rating: avgResult.rows[0]?.rating || 0,
+            total_reviews: avgResult.rows[0]?.total_reviews || 0
+        });
+    } catch (error) {
+        console.error('Get reviews error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get jobs pending review for current user
+app.get('/api/reviews/pending', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        if (req.user.user_type === 'seeker') {
+            query = `
+                SELECT aj.id, aj.agreed_amount, aj.completed_at,
+                       COALESCE(jp.title, ps.title, 'Job') as job_title,
+                       u.full_name as other_party_name,
+                       u.id as other_party_id
+                FROM accepted_jobs aj
+                JOIN users u ON aj.provider_id = u.id
+                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+                LEFT JOIN provider_services ps ON aj.service_id = ps.id
+                WHERE aj.seeker_id = $1 
+                  AND aj.status = 'completed'
+                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
+                ORDER BY aj.completed_at DESC
+            `;
+        } else {
+            query = `
+                SELECT aj.id, aj.agreed_amount, aj.completed_at,
+                       COALESCE(jp.title, ps.title, 'Job') as job_title,
+                       u.full_name as other_party_name,
+                       u.id as other_party_id
+                FROM accepted_jobs aj
+                JOIN users u ON aj.seeker_id = u.id
+                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+                LEFT JOIN provider_services ps ON aj.service_id = ps.id
+                WHERE aj.provider_id = $1 
+                  AND aj.status = 'completed'
+                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
+                ORDER BY aj.completed_at DESC
+            `;
+        }
+        
+        const result = await pool.query(query, [req.user.id]);
+        res.json({ success: true, pending_reviews: result.rows });
+    } catch (error) {
+        console.error('Get pending reviews error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
