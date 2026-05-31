@@ -43,7 +43,6 @@
         .bid-btn, .accept-btn, .complete-btn { width: 100%; background: linear-gradient(135deg, #00c8ff, #00e8a0); border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .accept-btn { background: linear-gradient(135deg, #10b981, #059669); color: white; }
         .complete-btn { background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; }
-        .review-btn { background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .delete-service { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
         .add-service-form { background: white; border-radius: 20px; padding: 25px; margin-top: 20px; }
@@ -57,12 +56,6 @@
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         .button-group button { flex: 1; margin-top: 0; }
         .badge-completed { background: #dbeafe; color: #2563eb; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
-        .rating-stars { display: inline-flex; align-items: center; gap: 2px; margin-left: 10px; }
-        .rating-stars i { color: #f59e0b; font-size: 12px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
-        .star { font-size: 40px; cursor: pointer; color: #cbd5e1; transition: color 0.2s; }
-        .star.selected { color: #f59e0b; }
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -93,7 +86,6 @@
             <p>• <strong>Bid on Jobs:</strong> Browse "Available Jobs" → Place a bid → If seeker accepts, job appears in "My Jobs"</p>
             <p>• <strong>Direct Hire:</strong> Customers can hire you directly from Marketplace → Requests appear in "Hire Requests" → Accept to start working</p>
             <p>• <strong>Complete Jobs:</strong> After finishing work, click "Mark Complete" to finish the job</p>
-            <p>• <strong>Leave Reviews:</strong> After a job is completed, you can rate your experience with the customer</p>
         </div>
 
         <div class="tabs">
@@ -127,25 +119,6 @@
         <div id="hireRequests" style="display: none;" class="cards-grid"></div>
     </div>
 
-    <div id="reviewModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom:20px;">⭐ Rate Your Experience</h3>
-            <p style="margin-bottom:15px;">How was your experience with <strong id="reviewCustomerName"></strong>?</p>
-            <div style="display:flex; gap:10px; justify-content:center; margin-bottom:20px;">
-                <span class="star" data-rating="1" onclick="setRating(1)">☆</span>
-                <span class="star" data-rating="2" onclick="setRating(2)">☆</span>
-                <span class="star" data-rating="3" onclick="setRating(3)">☆</span>
-                <span class="star" data-rating="4" onclick="setRating(4)">☆</span>
-                <span class="star" data-rating="5" onclick="setRating(5)">☆</span>
-            </div>
-            <textarea id="reviewComment" rows="4" placeholder="Write your review here (optional)..." style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:20px;"></textarea>
-            <div style="display:flex; gap:10px;">
-                <button class="btn-primary" style="flex:1;" onclick="submitReview()">Submit Review</button>
-                <button class="accept-btn" style="flex:1; background:#64748b;" onclick="closeReviewModal()">Cancel</button>
-            </div>
-        </div>
-    </div>
-
     <div id="toast" class="toast"></div>
 
     <script>
@@ -153,218 +126,8 @@
         let token = localStorage.getItem('token');
         let user = null;
         let categories = [];
-        let currentReviewJobId = null;
-        let currentReviewRevieweeId = null;
-        let currentRating = 0;
 
         if (!token) window.location.href = 'index.html';
         try {
             user = JSON.parse(localStorage.getItem('user'));
-            document.getElementById('userName').innerText = user?.full_name || 'Provider';
-            document.getElementById('providerName').innerText = user?.full_name?.split(' ')[0] || 'Provider';
-        } catch(e) {}
-
-        async function apiCall(endpoint, options = {}) {
-            const response = await fetch(API_URL + endpoint, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers } });
-            return response.json();
-        }
-
-        async function loadCategories() {
-            categories = await apiCall('/api/categories');
-            document.getElementById('serviceCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
-        }
-
-        async function loadDashboard() { await loadAvailableJobs(); await loadMyBids(); await loadMyJobs(); await loadMyServices(); await loadHireRequests(); await loadStats(); }
-
-        function renderStars(rating) {
-            if (!rating || rating === 0) return '<span style="color:#cbd5e1;">★★★★★</span> <span style="font-size:12px;">No reviews</span>';
-            const fullStars = Math.floor(rating);
-            let stars = '';
-            for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
-            for (let i = 0; i < 5 - fullStars; i++) stars += '<i class="far fa-star"></i>';
-            return `${stars} <span style="font-size:12px;">${rating.toFixed(1)}</span>`;
-        }
-
-        async function startChatWithSeeker(seekerId, jobId = null, directHireId = null) {
-            if (!seekerId) { showToast('Customer ID not found', 'error'); return; }
-            const result = await apiCall('/api/conversations/provider', { method: 'POST', body: JSON.stringify({ seeker_id: seekerId, job_id: jobId, direct_hire_id: directHireId }) });
-            if (result.success) { window.location.href = `chat.html?conversation=${result.conversation.id}`; }
-            else { showToast(result.message || 'Failed to start chat', 'error'); }
-        }
-
-        async function loadAvailableJobs() {
-            const jobs = await apiCall('/api/jobs');
-            const container = document.getElementById('availableJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">No jobs available. Check back later!</div>'; return; }
-            container.innerHTML = jobs.map(job => `
-                <div class="job-card">
-                    <span class="job-category">${job.category_icon || '🔧'} ${job.category_name}</span>
-                    <div class="job-title">${escapeHtml(job.title)}</div>
-                    <div class="job-details">${escapeHtml(job.description?.substring(0, 100) || '')}${job.description?.length > 100 ? '...' : ''}</div>
-                    <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'} | 📍 ${job.location || 'Anywhere'}</div>
-                    <div class="job-details">👤 Seeker: ${escapeHtml(job.seeker_name)} ${renderStars(job.seeker_rating)}</div>
-                    <div class="bid-form">
-                        <input type="number" id="bidAmount_${job.id}" class="bid-input" placeholder="Your bid amount (GHS)">
-                        <input type="number" id="bidDays_${job.id}" class="bid-input" placeholder="Est. days">
-                        <div class="button-group">
-                            <button class="bid-btn" onclick="placeBid(${job.id})">Place Bid</button>
-                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})">💬 Ask Question</button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function placeBid(jobId) {
-            const amount = document.getElementById(`bidAmount_${jobId}`).value;
-            const days = document.getElementById(`bidDays_${jobId}`).value;
-            if (!amount || amount <= 0) { showToast('Enter valid bid amount', 'error'); return; }
-            const result = await apiCall(`/api/jobs/${jobId}/bids`, { method: 'POST', body: JSON.stringify({ amount: parseFloat(amount), estimated_days: days || 1 }) });
-            if (result.success) { showToast('Bid placed!', 'success'); document.getElementById(`bidAmount_${jobId}`).value = ''; document.getElementById(`bidDays_${jobId}`).value = ''; loadMyBids(); }
-            else { showToast(result.message || 'Failed', 'error'); }
-        }
-
-        async function loadMyBids() {
-            const bids = await apiCall('/api/provider/bids');
-            const container = document.getElementById('myBids');
-            if (!bids || bids.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t placed any bids yet. Browse "Available Jobs" to place bids.</div>'; return; }
-            container.innerHTML = bids.map(bid => `<div class="job-card"><span class="job-category">📄 Bid #${bid.id}</span><div class="job-title">${escapeHtml(bid.job_title)}</div><div class="job-details">Your bid: GHS ${bid.amount} | ${bid.estimated_days} days</div><div class="job-details">Status: ${bid.status === 'pending' ? '⏳ Pending' : bid.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}</div><div class="job-budget">💰 Budget: GHS ${bid.job_budget || 'Negotiable'}</div></div>`).join('');
-        }
-
-        async function loadMyJobs() {
-            const jobs = await apiCall('/api/provider/jobs');
-            const container = document.getElementById('myJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">You have no accepted jobs yet. Place bids or accept hire requests to get jobs.</div>'; return; }
-            container.innerHTML = jobs.map(job => `
-                <div class="job-card">
-                    <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
-                    <div class="job-title">${escapeHtml(job.job_title || 'Direct Hire')}</div>
-                    <div class="job-details">💰 Agreed Amount: GHS ${job.agreed_amount}</div>
-                    <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)} ${renderStars(job.seeker_rating)}</div>
-                    <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
-                    <div class="job-details">📅 Started: ${new Date(job.created_at).toLocaleDateString()}</div>
-                    ${job.status === 'completed' ? '<div class="badge-completed" style="margin-top:10px;">✅ Job Completed</div>' : ''}
-                    <div class="button-group">
-                        ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
-                        ${job.status === 'completed' ? `<button class="review-btn" onclick="openReviewModal(${job.id}, ${job.seeker_id}, '${escapeHtml(job.seeker_name)}')">⭐ Leave Review</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})">💬 Message Customer</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function markJobComplete(jobId) {
-            if (!confirm('⚠️ Are you sure you want to mark this job as COMPLETE?')) return;
-            showToast('Processing...', 'info');
-            const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { method: 'PUT', body: JSON.stringify({ status: 'completed' }) });
-            if (result.success) { showToast('✅ Job marked as complete!', 'success'); loadMyJobs(); loadStats(); }
-            else { showToast(result.message || 'Failed', 'error'); }
-        }
-
-        async function loadMyServices() {
-            const services = await apiCall('/api/provider/services');
-            const container = document.getElementById('servicesList');
-            if (!services || services.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; return; }
-            container.innerHTML = services.map(service => `<div class="service-card" style="display:flex; justify-content:space-between; align-items:center;"><div><div class="job-title">${escapeHtml(service.title)}</div><div style="font-size:12px; color:#64748b;">${service.category_name}</div><div class="job-budget">GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div></div><button class="delete-service" onclick="deleteService(${service.id})">Delete</button></div>`).join('');
-        }
-
-        async function addService() {
-            const category_id = document.getElementById('serviceCategory').value;
-            const title = document.getElementById('serviceTitle').value;
-            const description = document.getElementById('serviceDescription').value;
-            const price = document.getElementById('servicePrice').value;
-            const price_type = document.getElementById('servicePriceType').value;
-            const experience_years = document.getElementById('serviceExperience').value;
-            if (!category_id || !title) { showToast('Category and title required', 'error'); return; }
-            const result = await apiCall('/api/provider/services', { method: 'POST', body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) });
-            if (result.success) { showToast('Service added!', 'success'); document.getElementById('serviceTitle').value = ''; document.getElementById('serviceDescription').value = ''; document.getElementById('servicePrice').value = ''; document.getElementById('serviceExperience').value = ''; loadMyServices(); }
-        }
-
-        async function deleteService(id) { if (confirm('Delete this service?')) { await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); showToast('Service deleted!', 'success'); loadMyServices(); } }
-
-        async function loadHireRequests() {
-            const requests = await apiCall('/api/provider/hire-requests');
-            const container = document.getElementById('hireRequests');
-            if (!requests || requests.length === 0) { container.innerHTML = '<div class="empty-state">No hire requests yet. When customers hire you directly from Marketplace, requests will appear here.</div>'; return; }
-            container.innerHTML = requests.map(req => `
-                <div class="hire-card">
-                    <span class="job-category">🔄 Pending Request</span>
-                    <div class="job-title">${escapeHtml(req.service_title)}</div>
-                    <div class="job-details">Customer: ${escapeHtml(req.customer_name)}</div>
-                    <div class="job-details">📞 Phone: ${req.customer_phone || 'Not provided'}</div>
-                    <div class="job-budget">💰 Offered: GHS ${req.agreed_amount}</div>
-                    <div class="job-details">📝 "${escapeHtml(req.message || 'No message')}"</div>
-                    <div class="button-group">
-                        <button class="accept-btn" onclick="respondToHire(${req.id}, 'accepted')">Accept</button>
-                        <button class="delete-service" onclick="respondToHire(${req.id}, 'rejected')">Decline</button>
-                        <button class="chat-btn" onclick="startChatWithSeeker(${req.customer_id}, null, ${req.id})">💬 Message</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function respondToHire(hireId, status) {
-            showToast('Processing...', 'info');
-            const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
-            if (result.success) { showToast(status === 'accepted' ? '✅ Hire request accepted! Job added to My Jobs.' : '✅ Hire request declined', 'success'); loadHireRequests(); loadMyJobs(); loadStats(); }
-            else { showToast(result.message || 'Failed to respond', 'error'); }
-        }
-
-        async function loadStats() {
-            const stats = await apiCall('/api/dashboard/stats');
-            document.getElementById('statsGrid').innerHTML = `
-                <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Earnings</h4><div class="stat-number">GHS ${(stats.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
-            `;
-        }
-
-        function openReviewModal(jobId, revieweeId, customerName) {
-            currentReviewJobId = jobId;
-            currentReviewRevieweeId = revieweeId;
-            currentRating = 0;
-            document.getElementById('reviewCustomerName').innerText = customerName;
-            document.getElementById('reviewComment').value = '';
-            document.querySelectorAll('.star').forEach(star => { star.classList.remove('selected'); star.innerText = '☆'; });
-            document.getElementById('reviewModal').style.display = 'flex';
-        }
-
-        function setRating(rating) {
-            currentRating = rating;
-            const stars = document.querySelectorAll('.star');
-            stars.forEach((star, index) => {
-                if (index < rating) { star.classList.add('selected'); star.innerText = '★'; }
-                else { star.classList.remove('selected'); star.innerText = '☆'; }
-            });
-        }
-
-        async function submitReview() {
-            if (currentRating === 0) { showToast('Please select a rating', 'error'); return; }
-            const comment = document.getElementById('reviewComment').value;
-            showToast('Submitting review...', 'info');
-            const result = await apiCall('/api/reviews', { method: 'POST', body: JSON.stringify({ job_id: currentReviewJobId, reviewee_id: currentReviewRevieweeId, rating: currentRating, comment: comment }) });
-            if (result.success) { showToast('⭐ Review submitted successfully!', 'success'); closeReviewModal(); loadMyJobs(); }
-            else { showToast(result.message || 'Failed to submit review', 'error'); }
-        }
-
-        function closeReviewModal() { document.getElementById('reviewModal').style.display = 'none'; currentReviewJobId = null; currentReviewRevieweeId = null; currentRating = 0; }
-
-        function showTab(tab) {
-            document.getElementById('availableJobs').style.display = tab === 'available' ? 'grid' : 'none';
-            document.getElementById('myBids').style.display = tab === 'myBids' ? 'grid' : 'none';
-            document.getElementById('myJobs').style.display = tab === 'myJobs' ? 'grid' : 'none';
-            document.getElementById('myServices').style.display = tab === 'services' ? 'block' : 'none';
-            document.getElementById('hireRequests').style.display = tab === 'hireRequests' ? 'grid' : 'none';
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-        }
-
-        function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.style.backgroundColor = type === 'error' ? '#ef4444' : type === 'info' ? '#3b82f6' : '#10b981'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
-        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
-        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
-
-        loadCategories(); loadDashboard();
-    </script>
-</body>
-</html>
+            document
