@@ -65,7 +65,7 @@
         <div class="nav-links">
             <a href="#" class="nav-link active">📊 My Dashboard</a>
             <a href="#" class="nav-link" onclick="window.location.href='marketplace.html'">🛒 Marketplace</a>
-            <a href="chat.html" class="nav-link" id="chatNavLink">💬 Messages <span id="unreadBadge" style="background:#ef4444; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:5px; display:none;"></span></a>
+            <a href="chat.html" class="nav-link" id="chatNavLink">💬 Messages</a>
         </div>
         <div class="user-info">
             <span class="user-name" id="userName">Provider</span>
@@ -210,21 +210,29 @@
         async function loadMyJobs() {
             const jobs = await apiCall('/api/provider/jobs');
             const container = document.getElementById('myJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">You have no accepted jobs yet.</div>'; return; }
-            container.innerHTML = jobs.map(job => `
-                <div class="job-card">
-                    <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
-                    <div class="job-title">${escapeHtml(job.job_title)}</div>
-                    <div class="job-details">💰 Amount: GHS ${job.agreed_amount}</div>
-                    <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)}</div>
-                    <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
-                    ${job.status === 'completed' ? '<div class="badge-completed">✅ Completed</div>' : ''}
-                    <div class="button-group">
-                        ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})">💬 Message Customer</button>
+            
+            if (!jobs || jobs.length === 0) { 
+                container.innerHTML = '<div class="empty-state">📋 No accepted jobs yet. Accept a hire request or wait for your bids to be accepted.</div>'; 
+                return; 
+            }
+            
+            container.innerHTML = jobs.map(job => {
+                const jobTitle = job.job_title || job.service_title || 'Direct Hire';
+                return `
+                    <div class="job-card">
+                        <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
+                        <div class="job-title">${escapeHtml(jobTitle)}</div>
+                        <div class="job-details">💰 Amount: GHS ${job.agreed_amount}</div>
+                        <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)}</div>
+                        <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
+                        ${job.status === 'completed' ? '<div class="badge-completed">✅ Completed</div>' : ''}
+                        <div class="button-group">
+                            ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
+                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id || 'null'})">💬 Message Customer</button>
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         async function markJobComplete(jobId) {
@@ -281,7 +289,7 @@
             showToast('Processing...', 'info');
             const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
             if (result.success) { 
-                showToast(status === 'accepted' ? '✅ Hire request accepted!' : '✅ Hire request declined', 'success'); 
+                showToast(status === 'accepted' ? '✅ Hire request accepted! Job added to My Jobs.' : '✅ Hire request declined', 'success'); 
                 loadHireRequests(); 
                 loadMyJobs(); 
                 loadStats();
