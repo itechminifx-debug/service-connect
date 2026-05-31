@@ -11,10 +11,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Comment this line:
-// const { sendEmail } = require('./emailService');
+
 
 // Add this dummy function instead:
-const sendEmail = async (to, type, data) => {
+
     console.log(`📧 Email would be sent to ${to}: ${type}`);
     return true;
 };
