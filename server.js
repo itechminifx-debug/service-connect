@@ -530,10 +530,9 @@ app.get('/api/provider/jobs', authenticateToken, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `SELECT aj.*, jp.title as job_title, u.full_name as seeker_name, u.phone as seeker_phone, ps.title as service_title
+            `SELECT aj.*, jp.title as job_title, u.full_name as seeker_name, u.phone as seeker_phone
              FROM accepted_jobs aj
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             LEFT JOIN provider_services ps ON aj.service_id = ps.id
+             JOIN job_posts jp ON aj.job_post_id = jp.id
              JOIN users u ON aj.seeker_id = u.id
              WHERE aj.provider_id = $1
              ORDER BY aj.created_at DESC`,
@@ -564,7 +563,9 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     }
 });
 
-// ==================== PROVIDER SERVICES ====================
+// ==================== PROVIDER SERVICES (COMPLETE CRUD) ====================
+
+// GET all services
 app.get('/api/provider/services', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json([]);
     
@@ -583,32 +584,103 @@ app.get('/api/provider/services', authenticateToken, async (req, res) => {
     }
 });
 
+// ADD new service
 app.post('/api/provider/services', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
     const { category_id, title, description, price, price_type, experience_years } = req.body;
     
+    if (!category_id || !title) {
+        return res.status(400).json({ success: false, message: 'Category and title are required' });
+    }
+    
     try {
         const result = await pool.query(
-            `INSERT INTO provider_services (provider_id, category_id, title, description, price, price_type, experience_years)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO provider_services (provider_id, category_id, title, description, price, price_type, experience_years, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, true)
              RETURNING *`,
-            [req.user.id, category_id, title, description, price, price_type, experience_years]
+            [req.user.id, category_id, title, description, price, price_type, experience_years || 0]
         );
         res.json({ success: true, service: result.rows[0] });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Add service error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
+// EDIT/UPDATE service
+app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
+    const { id } = req.params;
+    const { title, description, price, price_type } = req.body;
+    
     try {
-        await pool.query('DELETE FROM provider_services WHERE id = $1 AND provider_id = $2', [req.params.id, req.user.id]);
-        res.json({ success: true });
+        const verifyResult = await pool.query(
+            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
+            [id, req.user.id]
+        );
+        
+        if (verifyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
+        }
+        
+        const result = await pool.query(
+            `UPDATE provider_services 
+             SET title = COALESCE($1, title),
+                 description = COALESCE($2, description),
+                 price = COALESCE($3, price),
+                 price_type = COALESCE($4, price_type)
+             WHERE id = $5 AND provider_id = $6
+             RETURNING *`,
+            [title, description, price, price_type, id, req.user.id]
+        );
+        
+        res.json({ success: true, service: result.rows[0] });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Update service error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// DELETE service (FIXED)
+app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can delete services' });
+    }
+    
+    const { id } = req.params;
+    
+    console.log(`🗑️ Delete request for service ${id} by provider ${req.user.id}`);
+    
+    try {
+        // Check if service exists and belongs to this provider
+        const checkResult = await pool.query(
+            'SELECT id, provider_id, title FROM provider_services WHERE id = $1',
+            [id]
+        );
+        
+        if (checkResult.rows.length === 0) {
+            console.log(`❌ Service ${id} not found`);
+            return res.status(404).json({ success: false, message: 'Service not found' });
+        }
+        
+        const service = checkResult.rows[0];
+        
+        if (service.provider_id !== req.user.id) {
+            console.log(`❌ Service ${id} belongs to provider ${service.provider_id}, not ${req.user.id}`);
+            return res.status(403).json({ success: false, message: 'You can only delete your own services' });
+        }
+        
+        // Delete the service
+        await pool.query('DELETE FROM provider_services WHERE id = $1', [id]);
+        
+        console.log(`✅ Service "${service.title}" (ID: ${id}) deleted by provider ${req.user.id}`);
+        
+        res.json({ success: true, message: 'Service deleted successfully' });
+    } catch (error) {
+        console.error('Delete service error:', error);
+        res.status(500).json({ success: false, error: error.message, message: 'Database error' });
     }
 });
 
@@ -616,8 +688,8 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT ps.*, u.full_name as provider_name, u.location as provider_location,
-                    c.name as category_name, c.icon as category_icon
+            `SELECT ps.*, u.full_name as provider_name, u.location as provider_location, u.rating as provider_rating,
+                    u.total_reviews as provider_reviews, c.name as category_name, c.icon as category_icon
              FROM provider_services ps
              JOIN users u ON ps.provider_id = u.id
              JOIN categories c ON ps.category_id = c.id
@@ -669,18 +741,11 @@ app.get('/api/provider/hire-requests', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================== RESPOND TO HIRE REQUEST (FIXED) ====================
 app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can respond' });
-    }
+    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
     const { id } = req.params;
     const { status } = req.body;
-    
-    if (!status || (status !== 'accepted' && status !== 'rejected')) {
-        return res.status(400).json({ success: false, message: 'Status must be "accepted" or "rejected"' });
-    }
     
     try {
         const hireResult = await pool.query(
@@ -764,6 +829,85 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
         }
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ==================== ADMIN ENDPOINTS ====================
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    try {
+        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, created_at FROM users ORDER BY created_at DESC`);
+        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
+        const providers = result.rows.filter(u => u.user_type === 'provider').length;
+        res.json({ success: true, users: result.rows, total: result.rows.length, seekers, providers });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT jp.*, u.full_name as seeker_name, (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count FROM job_posts jp LEFT JOIN users u ON jp.seeker_id = u.id ORDER BY jp.created_at DESC LIMIT 100`);
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'open' THEN 1 END) as open, COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed FROM job_posts`);
+        res.json({ success: true, total: parseInt(result.rows[0].total) || 0, open: parseInt(result.rows[0].open) || 0, assigned: parseInt(result.rows[0].assigned) || 0, completed: parseInt(result.rows[0].completed) || 0 });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const totalResult = await pool.query(`SELECT COALESCE(SUM(agreed_amount), 0) as total_value, COALESCE(SUM(platform_commission), 0) as total_commission, COUNT(*) as completed_count FROM accepted_jobs WHERE status = 'completed'`);
+        const recentResult = await pool.query(`SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.completed_at, COALESCE(p.full_name, 'Unknown') as provider_name, COALESCE(s.full_name, 'Unknown') as seeker_name, COALESCE(jp.title, ps.title, 'Direct Hire') as job_title FROM accepted_jobs aj LEFT JOIN users p ON aj.provider_id = p.id LEFT JOIN users s ON aj.seeker_id = s.id LEFT JOIN job_posts jp ON aj.job_post_id = jp.id LEFT JOIN provider_services ps ON aj.service_id = ps.id WHERE aj.status = 'completed' ORDER BY aj.completed_at DESC LIMIT 50`);
+        res.json({ success: true, total_transaction_value: parseFloat(totalResult.rows[0].total_value) || 0, total_potential_commission: parseFloat(totalResult.rows[0].total_commission) || 0, completed_jobs: parseInt(totalResult.rows[0].completed_count) || 0, recent_transactions: recentResult.rows || [] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/commission/rate', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
+        const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
+        res.json({ success: true, commission_rate: rate });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/commission/rate', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { rate } = req.body;
+    if (!rate || rate < 0 || rate > 100) return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
+    try {
+        await pool.query(`INSERT INTO admin_settings (setting_key, setting_value, updated_at) VALUES ('commission_rate', $1, CURRENT_TIMESTAMP) ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`, [rate]);
+        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/services', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT ps.*, u.full_name as provider_name, c.name as category_name FROM provider_services ps LEFT JOIN users u ON ps.provider_id = u.id LEFT JOIN categories c ON ps.category_id = c.id WHERE ps.is_active = true ORDER BY ps.created_at DESC LIMIT 100`);
+        res.json({ success: true, services: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -966,642 +1110,7 @@ app.get('/admin-dashboard.html', (req, res) => {
     if (filePath) res.sendFile(filePath);
     else res.status(404).send('File not found');
 });
-// ==================== ADMIN ENDPOINTS ====================
 
-// ==================== ADMIN ENDPOINTS ====================
-
-// Get all users (admin only)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    try {
-        const result = await pool.query(
-            `SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, created_at, last_login
-             FROM users
-             ORDER BY created_at DESC`
-        );
-        
-        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
-        const providers = result.rows.filter(u => u.user_type === 'provider').length;
-        
-        res.json({ 
-            success: true, 
-            users: result.rows,
-            total: result.rows.length,
-            seekers: seekers,
-            providers: providers
-        });
-    } catch (error) {
-        console.error('Error getting users:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get all jobs (admin only) - FIXED
-app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    try {
-        const result = await pool.query(`
-            SELECT 
-                jp.id,
-                jp.title,
-                jp.description,
-                jp.budget,
-                jp.location,
-                jp.status,
-                jp.views,
-                jp.created_at,
-                u.id as seeker_id,
-                u.full_name as seeker_name,
-                u.email as seeker_email,
-                (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count
-            FROM job_posts jp
-            LEFT JOIN users u ON jp.seeker_id = u.id
-            ORDER BY jp.created_at DESC
-            LIMIT 100
-        `);
-        
-        console.log(`📊 Admin: Found ${result.rows.length} jobs`);
-        
-        res.json({ 
-            success: true, 
-            jobs: result.rows,
-            count: result.rows.length
-        });
-    } catch (error) {
-        console.error('Error getting jobs:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get jobs stats (admin only)
-app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false });
-    }
-    
-    try {
-        const result = await pool.query(`
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN status = 'open' THEN 1 END) as open,
-                COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned,
-                COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
-            FROM job_posts
-        `);
-        
-        res.json({ 
-            success: true, 
-            total: parseInt(result.rows[0].total) || 0,
-            open: parseInt(result.rows[0].open) || 0,
-            assigned: parseInt(result.rows[0].assigned) || 0,
-            completed: parseInt(result.rows[0].completed) || 0
-        });
-    } catch (error) {
-        console.error('Error getting jobs stats:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ==================== ADMIN ENDPOINTS (ALL FIXED) ====================
-
-// Get all users
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    try {
-        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, created_at FROM users ORDER BY created_at DESC`);
-        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
-        const providers = result.rows.filter(u => u.user_type === 'provider').length;
-        res.json({ success: true, users: result.rows, total: result.rows.length, seekers, providers });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get all jobs
-app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`SELECT jp.*, u.full_name as seeker_name, (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count FROM job_posts jp LEFT JOIN users u ON jp.seeker_id = u.id ORDER BY jp.created_at DESC LIMIT 100`);
-        res.json({ success: true, jobs: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get jobs stats
-app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'open' THEN 1 END) as open, COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed FROM job_posts`);
-        res.json({ success: true, total: parseInt(result.rows[0].total) || 0, open: parseInt(result.rows[0].open) || 0, assigned: parseInt(result.rows[0].assigned) || 0, completed: parseInt(result.rows[0].completed) || 0 });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get earnings (potential)
-app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const totalResult = await pool.query(`SELECT COALESCE(SUM(agreed_amount), 0) as total_value, COALESCE(SUM(platform_commission), 0) as total_commission, COUNT(*) as completed_count FROM accepted_jobs WHERE status = 'completed'`);
-        const recentResult = await pool.query(`SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.completed_at, COALESCE(p.full_name, 'Unknown') as provider_name, COALESCE(s.full_name, 'Unknown') as seeker_name, COALESCE(jp.title, ps.title, 'Direct Hire') as job_title FROM accepted_jobs aj LEFT JOIN users p ON aj.provider_id = p.id LEFT JOIN users s ON aj.seeker_id = s.id LEFT JOIN job_posts jp ON aj.job_post_id = jp.id LEFT JOIN provider_services ps ON aj.service_id = ps.id WHERE aj.status = 'completed' ORDER BY aj.completed_at DESC LIMIT 50`);
-        res.json({ success: true, total_transaction_value: parseFloat(totalResult.rows[0].total_value) || 0, total_potential_commission: parseFloat(totalResult.rows[0].total_commission) || 0, completed_jobs: parseInt(totalResult.rows[0].completed_count) || 0, recent_transactions: recentResult.rows || [] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get commission rate
-app.get('/api/commission/rate', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
-        const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
-        res.json({ success: true, commission_rate: rate });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update commission rate
-app.put('/api/commission/rate', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { rate } = req.body;
-    if (!rate || rate < 0 || rate > 100) return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
-    try {
-        await pool.query(`INSERT INTO admin_settings (setting_key, setting_value, updated_at) VALUES ('commission_rate', $1, CURRENT_TIMESTAMP) ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`, [rate]);
-        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get provider services
-app.get('/api/admin/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`SELECT ps.*, u.full_name as provider_name, c.name as category_name FROM provider_services ps LEFT JOIN users u ON ps.provider_id = u.id LEFT JOIN categories c ON ps.category_id = c.id WHERE ps.is_active = true ORDER BY ps.created_at DESC LIMIT 100`);
-        res.json({ success: true, services: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== REVIEWS & RATINGS SYSTEM ====================
-
-// Submit a review (after job completion)
-app.post('/api/reviews', authenticateToken, async (req, res) => {
-    const { job_id, reviewee_id, rating, comment } = req.body;
-    
-    if (!job_id || !reviewee_id || !rating) {
-        return res.status(400).json({ success: false, message: 'Job ID, reviewee, and rating are required' });
-    }
-    
-    if (rating < 1 || rating > 5) {
-        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-    }
-    
-    try {
-        // Check if job exists and is completed
-        const jobCheck = await pool.query(
-            `SELECT aj.*, jp.title 
-             FROM accepted_jobs aj
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             WHERE aj.id = $1 AND aj.status = 'completed'`,
-            [job_id]
-        );
-        
-        if (jobCheck.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found or not completed' });
-        }
-        
-        const job = jobCheck.rows[0];
-        
-        // Determine reviewer type and ensure user is part of the job
-        let reviewer_type;
-        if (req.user.id === job.seeker_id) {
-            reviewer_type = 'seeker';
-        } else if (req.user.id === job.provider_id) {
-            reviewer_type = 'provider';
-        } else {
-            return res.status(403).json({ success: false, message: 'You are not part of this job' });
-        }
-        
-        // Check if already reviewed
-        const existingReview = await pool.query(
-            'SELECT id FROM reviews WHERE job_id = $1 AND reviewer_id = $2',
-            [job_id, req.user.id]
-        );
-        
-        if (existingReview.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'You have already reviewed this job' });
-        }
-        
-        // Insert review
-        const result = await pool.query(
-            `INSERT INTO reviews (job_id, reviewer_id, reviewee_id, rating, comment, reviewer_type)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING *`,
-            [job_id, req.user.id, reviewee_id, rating, comment || '', reviewer_type]
-        );
-        
-        // Update user's average rating
-        await updateUserRating(reviewee_id);
-        
-        res.json({ success: true, review: result.rows[0], message: 'Review submitted successfully!' });
-    } catch (error) {
-        console.error('Submit review error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update user's average rating
-async function updateUserRating(userId) {
-    const result = await pool.query(
-        `SELECT AVG(rating) as avg_rating, COUNT(*) as total 
-         FROM reviews 
-         WHERE reviewee_id = $1`,
-        [userId]
-    );
-    
-    const avgRating = parseFloat(result.rows[0].avg_rating) || 0;
-    const totalReviews = parseInt(result.rows[0].total) || 0;
-    
-    await pool.query(
-        'UPDATE users SET rating = $1, total_reviews = $2 WHERE id = $3',
-        [avgRating, totalReviews, userId]
-    );
-}
-
-// Get reviews for a user
-app.get('/api/reviews/user/:userId', authenticateToken, async (req, res) => {
-    const { userId } = req.params;
-    
-    try {
-        const result = await pool.query(
-            `SELECT r.*, 
-                    u.full_name as reviewer_name,
-                    u.user_type as reviewer_type,
-                    COALESCE(jp.title, ps.title, 'Job') as job_title
-             FROM reviews r
-             JOIN users u ON r.reviewer_id = u.id
-             LEFT JOIN accepted_jobs aj ON r.job_id = aj.id
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             LEFT JOIN provider_services ps ON aj.service_id = ps.id
-             WHERE r.reviewee_id = $1
-             ORDER BY r.created_at DESC
-             LIMIT 20`,
-            [userId]
-        );
-        
-        // Get average rating
-        const avgResult = await pool.query(
-            'SELECT rating, total_reviews FROM users WHERE id = $1',
-            [userId]
-        );
-        
-        res.json({ 
-            success: true, 
-            reviews: result.rows,
-            average_rating: avgResult.rows[0]?.rating || 0,
-            total_reviews: avgResult.rows[0]?.total_reviews || 0
-        });
-    } catch (error) {
-        console.error('Get reviews error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get jobs pending review for current user
-app.get('/api/reviews/pending', authenticateToken, async (req, res) => {
-    try {
-        let query;
-        if (req.user.user_type === 'seeker') {
-            query = `
-                SELECT aj.id, aj.agreed_amount, aj.completed_at,
-                       COALESCE(jp.title, ps.title, 'Job') as job_title,
-                       u.full_name as other_party_name,
-                       u.id as other_party_id
-                FROM accepted_jobs aj
-                JOIN users u ON aj.provider_id = u.id
-                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-                LEFT JOIN provider_services ps ON aj.service_id = ps.id
-                WHERE aj.seeker_id = $1 
-                  AND aj.status = 'completed'
-                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
-                ORDER BY aj.completed_at DESC
-            `;
-        } else {
-            query = `
-                SELECT aj.id, aj.agreed_amount, aj.completed_at,
-                       COALESCE(jp.title, ps.title, 'Job') as job_title,
-                       u.full_name as other_party_name,
-                       u.id as other_party_id
-                FROM accepted_jobs aj
-                JOIN users u ON aj.seeker_id = u.id
-                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-                LEFT JOIN provider_services ps ON aj.service_id = ps.id
-                WHERE aj.provider_id = $1 
-                  AND aj.status = 'completed'
-                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
-                ORDER BY aj.completed_at DESC
-            `;
-        }
-        
-        const result = await pool.query(query, [req.user.id]);
-        res.json({ success: true, pending_reviews: result.rows });
-    } catch (error) {
-        console.error('Get pending reviews error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});// ==================== REVIEWS & RATINGS SYSTEM ====================
-
-// Submit a review (after job completion)
-app.post('/api/reviews', authenticateToken, async (req, res) => {
-    const { job_id, reviewee_id, rating, comment } = req.body;
-    
-    if (!job_id || !reviewee_id || !rating) {
-        return res.status(400).json({ success: false, message: 'Job ID, reviewee, and rating are required' });
-    }
-    
-    if (rating < 1 || rating > 5) {
-        return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
-    }
-    
-    try {
-        // Check if job exists and is completed
-        const jobCheck = await pool.query(
-            `SELECT aj.*, jp.title 
-             FROM accepted_jobs aj
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             WHERE aj.id = $1 AND aj.status = 'completed'`,
-            [job_id]
-        );
-        
-        if (jobCheck.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found or not completed' });
-        }
-        
-        const job = jobCheck.rows[0];
-        
-        // Determine reviewer type and ensure user is part of the job
-        let reviewer_type;
-        if (req.user.id === job.seeker_id) {
-            reviewer_type = 'seeker';
-        } else if (req.user.id === job.provider_id) {
-            reviewer_type = 'provider';
-        } else {
-            return res.status(403).json({ success: false, message: 'You are not part of this job' });
-        }
-        
-        // Check if already reviewed
-        const existingReview = await pool.query(
-            'SELECT id FROM reviews WHERE job_id = $1 AND reviewer_id = $2',
-            [job_id, req.user.id]
-        );
-        
-        if (existingReview.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'You have already reviewed this job' });
-        }
-        
-        // Insert review
-        const result = await pool.query(
-            `INSERT INTO reviews (job_id, reviewer_id, reviewee_id, rating, comment, reviewer_type)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING *`,
-            [job_id, req.user.id, reviewee_id, rating, comment || '', reviewer_type]
-        );
-        
-        // Update user's average rating
-        await updateUserRating(reviewee_id);
-        
-        res.json({ success: true, review: result.rows[0], message: 'Review submitted successfully!' });
-    } catch (error) {
-        console.error('Submit review error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update user's average rating
-async function updateUserRating(userId) {
-    const result = await pool.query(
-        `SELECT AVG(rating) as avg_rating, COUNT(*) as total 
-         FROM reviews 
-         WHERE reviewee_id = $1`,
-        [userId]
-    );
-    
-    const avgRating = parseFloat(result.rows[0].avg_rating) || 0;
-    const totalReviews = parseInt(result.rows[0].total) || 0;
-    
-    await pool.query(
-        'UPDATE users SET rating = $1, total_reviews = $2 WHERE id = $3',
-        [avgRating, totalReviews, userId]
-    );
-}
-
-// Get reviews for a user
-app.get('/api/reviews/user/:userId', authenticateToken, async (req, res) => {
-    const { userId } = req.params;
-    
-    try {
-        const result = await pool.query(
-            `SELECT r.*, 
-                    u.full_name as reviewer_name,
-                    u.user_type as reviewer_type,
-                    COALESCE(jp.title, ps.title, 'Job') as job_title
-             FROM reviews r
-             JOIN users u ON r.reviewer_id = u.id
-             LEFT JOIN accepted_jobs aj ON r.job_id = aj.id
-             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-             LEFT JOIN provider_services ps ON aj.service_id = ps.id
-             WHERE r.reviewee_id = $1
-             ORDER BY r.created_at DESC
-             LIMIT 20`,
-            [userId]
-        );
-        
-        // Get average rating
-        const avgResult = await pool.query(
-            'SELECT rating, total_reviews FROM users WHERE id = $1',
-            [userId]
-        );
-        
-        res.json({ 
-            success: true, 
-            reviews: result.rows,
-            average_rating: avgResult.rows[0]?.rating || 0,
-            total_reviews: avgResult.rows[0]?.total_reviews || 0
-        });
-    } catch (error) {
-        console.error('Get reviews error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get jobs pending review for current user
-app.get('/api/reviews/pending', authenticateToken, async (req, res) => {
-    try {
-        let query;
-        if (req.user.user_type === 'seeker') {
-            query = `
-                SELECT aj.id, aj.agreed_amount, aj.completed_at,
-                       COALESCE(jp.title, ps.title, 'Job') as job_title,
-                       u.full_name as other_party_name,
-                       u.id as other_party_id
-                FROM accepted_jobs aj
-                JOIN users u ON aj.provider_id = u.id
-                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-                LEFT JOIN provider_services ps ON aj.service_id = ps.id
-                WHERE aj.seeker_id = $1 
-                  AND aj.status = 'completed'
-                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
-                ORDER BY aj.completed_at DESC
-            `;
-        } else {
-            query = `
-                SELECT aj.id, aj.agreed_amount, aj.completed_at,
-                       COALESCE(jp.title, ps.title, 'Job') as job_title,
-                       u.full_name as other_party_name,
-                       u.id as other_party_id
-                FROM accepted_jobs aj
-                JOIN users u ON aj.seeker_id = u.id
-                LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-                LEFT JOIN provider_services ps ON aj.service_id = ps.id
-                WHERE aj.provider_id = $1 
-                  AND aj.status = 'completed'
-                  AND NOT EXISTS (SELECT 1 FROM reviews WHERE job_id = aj.id AND reviewer_id = $1)
-                ORDER BY aj.completed_at DESC
-            `;
-        }
-        
-        const result = await pool.query(query, [req.user.id]);
-        res.json({ success: true, pending_reviews: result.rows });
-    } catch (error) {
-        console.error('Get pending reviews error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== PROVIDER SERVICES (COMPLETE CRUD) ====================
-
-// GET all services for a provider
-app.get('/api/provider/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') return res.status(403).json([]);
-    
-    try {
-        const result = await pool.query(
-            `SELECT ps.*, c.name as category_name
-             FROM provider_services ps
-             JOIN categories c ON ps.category_id = c.id
-             WHERE ps.provider_id = $1 AND ps.is_active = true
-             ORDER BY ps.created_at DESC`,
-            [req.user.id]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get services error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ADD a new service
-app.post('/api/provider/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
-    
-    const { category_id, title, description, price, price_type, experience_years } = req.body;
-    
-    if (!category_id || !title) {
-        return res.status(400).json({ success: false, message: 'Category and title are required' });
-    }
-    
-    try {
-        const result = await pool.query(
-            `INSERT INTO provider_services (provider_id, category_id, title, description, price, price_type, experience_years, is_active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-             RETURNING *`,
-            [req.user.id, category_id, title, description, price, price_type, experience_years || 0]
-        );
-        res.json({ success: true, service: result.rows[0] });
-    } catch (error) {
-        console.error('Add service error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// EDIT/UPDATE a service (FIXED)
-app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
-    
-    const { id } = req.params;
-    const { title, description, price, price_type } = req.body;
-    
-    try {
-        // Verify the service belongs to this provider
-        const verifyResult = await pool.query(
-            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
-            [id, req.user.id]
-        );
-        
-        if (verifyResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
-        }
-        
-        // Update the service
-        const result = await pool.query(
-            `UPDATE provider_services 
-             SET title = COALESCE($1, title),
-                 description = COALESCE($2, description),
-                 price = COALESCE($3, price),
-                 price_type = COALESCE($4, price_type)
-             WHERE id = $5 AND provider_id = $6
-             RETURNING *`,
-            [title, description, price, price_type, id, req.user.id]
-        );
-        
-        console.log(`✅ Service ${id} updated by provider ${req.user.id}`);
-        res.json({ success: true, service: result.rows[0] });
-    } catch (error) {
-        console.error('Update service error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// DELETE a service (FIXED)
-app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
-    
-    const { id } = req.params;
-    
-    try {
-        // Verify the service belongs to this provider
-        const verifyResult = await pool.query(
-            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
-            [id, req.user.id]
-        );
-        
-        if (verifyResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
-        }
-        
-        // Soft delete - set is_active to false
-        await pool.query(
-            'UPDATE provider_services SET is_active = false WHERE id = $1 AND provider_id = $2',
-            [id, req.user.id]
-        );
-        
-        console.log(`✅ Service ${id} deleted by provider ${req.user.id}`);
-        res.json({ success: true, message: 'Service deleted successfully' });
-    } catch (error) {
-        console.error('Delete service error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
