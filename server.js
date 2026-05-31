@@ -1215,7 +1215,87 @@ app.get('/admin-dashboard.html', (req, res) => {
     if (filePath) res.sendFile(filePath);
     else res.status(404).send('File not found');
 });
+// ==================== ENHANCED ADMIN ENDPOINTS ====================
 
+// Update user (admin)
+app.put('/api/admin/users/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { full_name, phone, user_type, is_active } = req.body;
+    try {
+        await pool.query('UPDATE users SET full_name = $1, phone = $2, user_type = $3, is_active = $4 WHERE id = $5', [full_name, phone, user_type, is_active, id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Toggle user status (admin)
+app.put('/api/admin/users/:id/status', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { is_active } = req.body;
+    try {
+        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [is_active, id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update job (admin)
+app.put('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { title, description, budget, status } = req.body;
+    try {
+        await pool.query('UPDATE job_posts SET title = $1, description = $2, budget = $3, status = $4 WHERE id = $5', [title, description, budget, status, id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete job (admin)
+app.delete('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM job_posts WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete service (admin)
+app.delete('/api/admin/services/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    try {
+        await pool.query('UPDATE provider_services SET is_active = false WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Revenue chart data (admin)
+app.get('/api/admin/revenue/chart', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`
+            SELECT DATE_TRUNC('month', completed_at) as month, COALESCE(SUM(platform_commission), 0) as revenue
+            FROM accepted_jobs WHERE status = 'completed' AND completed_at IS NOT NULL
+            GROUP BY DATE_TRUNC('month', completed_at) ORDER BY month DESC LIMIT 6
+        `);
+        const labels = result.rows.map(r => new Date(r.month).toLocaleDateString('en-US', { month: 'short' })).reverse();
+        const values = result.rows.map(r => parseFloat(r.revenue)).reverse();
+        res.json({ success: true, data: { labels, values } });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
