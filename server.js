@@ -40,7 +40,6 @@ pool.query('SELECT NOW()', (err, res) => {
 async function createTables() {
     const client = await pool.connect();
     try {
-        // Users table
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -58,9 +57,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Users table ready');
 
-        // Categories table
         await client.query(`
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
@@ -71,9 +68,7 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
-        console.log('✅ Categories table ready');
 
-        // Job Posts table
         await client.query(`
             CREATE TABLE IF NOT EXISTS job_posts (
                 id SERIAL PRIMARY KEY,
@@ -89,9 +84,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Job posts table ready');
 
-        // Bids table
         await client.query(`
             CREATE TABLE IF NOT EXISTS bids (
                 id SERIAL PRIMARY KEY,
@@ -104,9 +97,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Bids table ready');
 
-        // Provider Services table
         await client.query(`
             CREATE TABLE IF NOT EXISTS provider_services (
                 id SERIAL PRIMARY KEY,
@@ -121,9 +112,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Provider services table ready');
 
-        // Direct Hires table
         await client.query(`
             CREATE TABLE IF NOT EXISTS direct_hires (
                 id SERIAL PRIMARY KEY,
@@ -136,9 +125,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Direct hires table ready');
 
-        // Accepted Jobs table with commission fields
         await client.query(`
             CREATE TABLE IF NOT EXISTS accepted_jobs (
                 id SERIAL PRIMARY KEY,
@@ -155,9 +142,7 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Accepted jobs table ready');
 
-        // Commission Transactions table
         await client.query(`
             CREATE TABLE IF NOT EXISTS commission_transactions (
                 id SERIAL PRIMARY KEY,
@@ -172,9 +157,7 @@ async function createTables() {
                 payment_reference VARCHAR(255)
             )
         `);
-        console.log('✅ Commission transactions table ready');
 
-        // Admin Settings table
         await client.query(`
             CREATE TABLE IF NOT EXISTS admin_settings (
                 id SERIAL PRIMARY KEY,
@@ -183,9 +166,7 @@ async function createTables() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
-        console.log('✅ Admin settings table ready');
 
-        // Conversations table for chat
         await client.query(`
             CREATE TABLE IF NOT EXISTS conversations (
                 id SERIAL PRIMARY KEY,
@@ -202,9 +183,7 @@ async function createTables() {
                 is_active BOOLEAN DEFAULT true
             )
         `);
-        console.log('✅ Conversations table ready');
 
-        // Messages table
         await client.query(`
             CREATE TABLE IF NOT EXISTS messages (
                 id SERIAL PRIMARY KEY,
@@ -220,9 +199,7 @@ async function createTables() {
                 offer_amount DECIMAL(10,2)
             )
         `);
-        console.log('✅ Messages table ready');
 
-        // Insert default categories
         const catCount = await client.query('SELECT COUNT(*) FROM categories');
         if (parseInt(catCount.rows[0].count) === 0) {
             await client.query(`
@@ -238,17 +215,14 @@ async function createTables() {
                 ('Construction', '🏗️', 'Construction and renovation services', 9),
                 ('Painting', '🎨', 'Painting and decorating services', 10)
             `);
-            console.log('✅ Default categories added');
         }
 
-        // Insert default commission rate
         const rateCheck = await client.query(`SELECT * FROM admin_settings WHERE setting_key = 'commission_rate'`);
         if (rateCheck.rows.length === 0) {
             await client.query(`INSERT INTO admin_settings (setting_key, setting_value) VALUES ('commission_rate', '10')`);
-            console.log('✅ Default commission rate set to 10%');
         }
 
-        console.log('✅ All tables created/verified');
+        console.log('✅ All tables ready');
     } catch (error) {
         console.error('Table creation error:', error);
     } finally {
@@ -282,12 +256,8 @@ const isAdmin = (req, res, next) => {
 };
 
 // ==================== AUTH ROUTES ====================
-
-// REGISTER
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, full_name, phone, location, user_type } = req.body;
-    
-    console.log('📝 Register:', email);
     
     if (!email || !password || !full_name) {
         return res.status(400).json({ success: false, message: 'Email, password, and full name required' });
@@ -316,7 +286,6 @@ app.post('/api/auth/register', async (req, res) => {
             { expiresIn: '7d' }
         );
         
-        console.log('✅ Registered:', email);
         res.json({ success: true, token, user });
     } catch (error) {
         console.error('Registration error:', error);
@@ -324,11 +293,8 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-// LOGIN
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
-    
-    console.log('🔑 Login attempt:', email);
     
     if (!email || !password) {
         return res.status(400).json({ success: false, message: 'Email and password required' });
@@ -341,7 +307,6 @@ app.post('/api/auth/login', async (req, res) => {
         );
         
         if (result.rows.length === 0) {
-            console.log('❌ User not found:', email);
             return res.status(401).json({ success: false, message: 'Invalid email or password' });
         }
         
@@ -349,7 +314,6 @@ app.post('/api/auth/login', async (req, res) => {
         const isValid = await bcrypt.compare(password, user.password_hash);
         
         if (!isValid) {
-            console.log('❌ Invalid password for:', email);
             return res.status(401).json({ success: false, message: 'Invalid email or password' });
         }
         
@@ -361,17 +325,7 @@ app.post('/api/auth/login', async (req, res) => {
             { expiresIn: '7d' }
         );
         
-        console.log('✅ Login successful:', email);
-        res.json({
-            success: true,
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                full_name: user.full_name,
-                user_type: user.user_type
-            }
-        });
+        res.json({ success: true, token, user: { id: user.id, email: user.email, full_name: user.full_name, user_type: user.user_type } });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
@@ -407,9 +361,7 @@ app.get('/api/jobs', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/jobs/my', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'seeker') {
-        return res.status(403).json([]);
-    }
+    if (req.user.user_type !== 'seeker') return res.status(403).json([]);
     
     try {
         const result = await pool.query(
@@ -498,7 +450,6 @@ app.post('/api/jobs/:jobId/bids', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================== ACCEPT BID (FIXED) ====================
 app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'seeker') {
         return res.status(403).json({ success: false, message: 'Only seekers can accept bids' });
@@ -507,11 +458,8 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
     const { bidId } = req.params;
     
     try {
-        console.log(`📝 Accepting bid ${bidId} by user ${req.user.id}`);
-        
-        // Get bid details with job info
         const bidResult = await pool.query(
-            `SELECT b.*, jp.seeker_id, jp.id as job_id, jp.title as job_title, jp.budget as job_budget
+            `SELECT b.*, jp.seeker_id, jp.id as job_id
              FROM bids b
              JOIN job_posts jp ON b.job_post_id = jp.id
              WHERE b.id = $1`,
@@ -523,88 +471,46 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
         }
         
         const bid = bidResult.rows[0];
-        console.log(`📝 Bid found: Job ${bid.job_id}, Provider ${bid.provider_id}, Amount ${bid.amount}`);
         
-        // Check if the seeker owns this job
         if (bid.seeker_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'You are not authorized to accept this bid' });
+            return res.status(403).json({ success: false, message: 'Not authorized' });
         }
         
-        // Check if bid is still pending
         if (bid.status !== 'pending') {
             return res.status(400).json({ success: false, message: `This bid has already been ${bid.status}` });
         }
         
-        // Check if job is still open
-        const jobCheck = await pool.query('SELECT status FROM job_posts WHERE id = $1', [bid.job_id]);
-        if (jobCheck.rows[0].status !== 'open') {
-            return res.status(400).json({ success: false, message: 'This job is no longer open for bids' });
-        }
-        
-        // Get commission rate
         const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
         const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
         
-        // Calculate commission
         const commission = (bid.amount * commissionRate) / 100;
         const providerEarnings = bid.amount - commission;
         
-        console.log(`📝 Commission: ${commissionRate}% = GHS ${commission}, Provider earns: GHS ${providerEarnings}`);
-        
-        // Start a transaction
         await pool.query('BEGIN');
         
-        // Update bid status to accepted
         await pool.query('UPDATE bids SET status = $1 WHERE id = $2', ['accepted', bidId]);
-        console.log(`✅ Bid ${bidId} status updated to accepted`);
+        await pool.query('UPDATE job_posts SET status = $1 WHERE id = $2', ['assigned', bid.job_id]);
         
-        // Update job post status to assigned
-        await pool.query('UPDATE job_posts SET status = $1, assigned_provider_id = $2 WHERE id = $3', 
-            ['assigned', bid.provider_id, bid.job_id]);
-        console.log(`✅ Job ${bid.job_id} status updated to assigned`);
-        
-        // Insert into accepted_jobs
         const acceptedResult = await pool.query(
-            `INSERT INTO accepted_jobs (job_post_id, provider_id, seeker_id, bid_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted', CURRENT_TIMESTAMP)
+            `INSERT INTO accepted_jobs (job_post_id, provider_id, seeker_id, bid_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted')
              RETURNING *`,
             [bid.job_id, bid.provider_id, req.user.id, bidId, bid.amount, commission, providerEarnings, commissionRate]
         );
-        console.log(`✅ Accepted job created with ID ${acceptedResult.rows[0].id}`);
         
-        // Reject all other pending bids for this job
-        const rejectedResult = await pool.query(
+        await pool.query(
             `UPDATE bids SET status = 'rejected' 
-             WHERE job_post_id = $1 AND id != $2 AND status = 'pending'
-             RETURNING id`,
+             WHERE job_post_id = $1 AND id != $2 AND status = 'pending'`,
             [bid.job_id, bidId]
         );
-        console.log(`✅ Rejected ${rejectedResult.rowCount} other bids for this job`);
         
-        // Insert commission transaction record
-        await pool.query(
-            `INSERT INTO commission_transactions (job_id, amount, commission_rate, platform_earnings, provider_id, seeker_id, status, transaction_date)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending', CURRENT_TIMESTAMP)`,
-            [acceptedResult.rows[0].id, bid.amount, commissionRate, commission, bid.provider_id, req.user.id]
-        );
-        
-        // Commit transaction
         await pool.query('COMMIT');
         
-        console.log(`✅✅✅ Bid ${bidId} accepted successfully!`);
-        
-        res.json({ 
-            success: true, 
-            message: `Bid accepted successfully! Platform commission: ${commissionRate}% (GHS ${commission.toFixed(2)})`,
-            commission: commission,
-            provider_earnings: providerEarnings,
-            accepted_job: acceptedResult.rows[0]
-        });
-        
+        res.json({ success: true, message: `Bid accepted! Commission: ${commissionRate}% (GHS ${commission})` });
     } catch (error) {
         await pool.query('ROLLBACK');
-        console.error('❌ Accept bid error:', error);
-        res.status(500).json({ success: false, error: error.message, message: 'Failed to accept bid: ' + error.message });
+        console.error('Accept bid error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -614,7 +520,7 @@ app.get('/api/provider/bids', authenticateToken, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `SELECT b.*, jp.title as job_title, jp.budget as job_budget, jp.status as job_status
+            `SELECT b.*, jp.title as job_title, jp.budget as job_budget
              FROM bids b
              JOIN job_posts jp ON b.job_post_id = jp.id
              WHERE b.provider_id = $1
@@ -647,57 +553,21 @@ app.get('/api/provider/jobs', authenticateToken, async (req, res) => {
 });
 
 app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
+    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
     const { jobId } = req.params;
     const { status } = req.body;
     
     try {
-        const checkJob = await pool.query(
-            `SELECT id, job_post_id, provider_id, status, platform_commission, provider_earnings
-             FROM accepted_jobs 
-             WHERE id = $1 AND provider_id = $2`,
-            [jobId, req.user.id]
-        );
-        
-        if (checkJob.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found' });
-        }
-        
-        const currentJob = checkJob.rows[0];
-        
-        if (currentJob.status === 'completed') {
-            return res.status(400).json({ success: false, message: 'Job already complete' });
-        }
-        
-        await pool.query('BEGIN');
-        
         await pool.query(
             `UPDATE accepted_jobs 
              SET status = $1, completed_at = CURRENT_TIMESTAMP 
              WHERE id = $2 AND provider_id = $3`,
             [status, jobId, req.user.id]
         );
-        
-        if (currentJob.job_post_id) {
-            await pool.query(`UPDATE job_posts SET status = $1 WHERE id = $2`, ['completed', currentJob.job_post_id]);
-        }
-        
-        // Update commission transaction status
-        await pool.query(
-            `UPDATE commission_transactions SET status = 'completed' WHERE job_id = $1`,
-            [jobId]
-        );
-        
-        await pool.query('COMMIT');
-        
-        res.json({ success: true, message: 'Job marked as complete!' });
+        res.json({ success: true });
     } catch (error) {
-        await pool.query('ROLLBACK');
-        console.error('Update job status error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -753,7 +623,7 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT ps.*, u.full_name as provider_name, u.location as provider_location, u.rating as provider_rating,
+            `SELECT ps.*, u.full_name as provider_name, u.location as provider_location,
                     c.name as category_name, c.icon as category_icon
              FROM provider_services ps
              JOIN users u ON ps.provider_id = u.id
@@ -775,22 +645,13 @@ app.post('/api/direct-hire', authenticateToken, async (req, res) => {
     const { service_id, provider_id, message, agreed_amount } = req.body;
     
     try {
-        const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
-        const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
-        
         const result = await pool.query(
             `INSERT INTO direct_hires (customer_id, provider_id, service_id, message, agreed_amount, status)
              VALUES ($1, $2, $3, $4, $5, 'pending')
              RETURNING *`,
             [req.user.id, provider_id, service_id, message, agreed_amount]
         );
-        
-        res.json({ 
-            success: true, 
-            hire: result.rows[0],
-            commission_rate: commissionRate,
-            message: `Hire request sent! Platform commission: ${commissionRate}% will apply upon completion.`
-        });
+        res.json({ success: true, hire: result.rows[0] });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -815,99 +676,51 @@ app.get('/api/provider/hire-requests', authenticateToken, async (req, res) => {
     }
 });
 
-// Respond to direct hire request (FIXED)
+// ==================== RESPOND TO HIRE REQUEST (FIXED) ====================
 app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can respond to hire requests' });
+        return res.status(403).json({ success: false, message: 'Only providers can respond' });
     }
     
     const { id } = req.params;
     const { status } = req.body;
     
-    // Validate status
     if (!status || (status !== 'accepted' && status !== 'rejected')) {
         return res.status(400).json({ success: false, message: 'Status must be "accepted" or "rejected"' });
     }
     
     try {
-        console.log(`📝 Processing hire request ${id} as ${status} for provider ${req.user.id}`);
-        
-        // First, get the hire request and verify it belongs to this provider
-        const hireResult = await pool.query(
-            `SELECT dh.*, ps.title as service_title, ps.provider_id, u.full_name as customer_name
-             FROM direct_hires dh
-             JOIN provider_services ps ON dh.service_id = ps.id
-             JOIN users u ON dh.customer_id = u.id
-             WHERE dh.id = $1 AND dh.provider_id = $2`,
-            [id, req.user.id]
-        );
-        
-        if (hireResult.rows.length === 0) {
-            console.log(`❌ Hire request ${id} not found for provider ${req.user.id}`);
-            return res.status(404).json({ success: false, message: 'Hire request not found or not assigned to you' });
-        }
-        
-        const hire = hireResult.rows[0];
-        
-        // Check if already responded
-        if (hire.status !== 'pending') {
-            return res.status(400).json({ success: false, message: `This request has already been ${hire.status}` });
-        }
-        
-        // Start transaction
-        await pool.query('BEGIN');
-        
-        // Update the hire request status
-        await pool.query(
-            'UPDATE direct_hires SET status = $1 WHERE id = $2 AND provider_id = $3',
+        const result = await pool.query(
+            `UPDATE direct_hires 
+             SET status = $1 
+             WHERE id = $2 AND provider_id = $3
+             RETURNING *`,
             [status, id, req.user.id]
         );
-        console.log(`✅ Hire request ${id} status updated to ${status}`);
         
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Hire request not found' });
+        }
+        
+        // If accepted, also create an entry in accepted_jobs
         if (status === 'accepted') {
-            // Get commission rate
+            const hire = result.rows[0];
             const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
             const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
-            
-            // Calculate commission
             const commission = (hire.agreed_amount * commissionRate) / 100;
             const providerEarnings = hire.agreed_amount - commission;
             
-            console.log(`💰 Commission: ${commissionRate}% = GHS ${commission}, Provider earns: GHS ${providerEarnings}`);
-            
-            // Create accepted job record
-            const acceptedResult = await pool.query(
-                `INSERT INTO accepted_jobs (provider_id, seeker_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'accepted', CURRENT_TIMESTAMP)
-                 RETURNING *`,
-                [req.user.id, hire.customer_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
-            );
-            console.log(`✅ Accepted job created with ID ${acceptedResult.rows[0].id}`);
-            
-            // Create commission transaction record
             await pool.query(
-                `INSERT INTO commission_transactions (job_id, amount, commission_rate, platform_earnings, provider_id, seeker_id, status, transaction_date)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'pending', CURRENT_TIMESTAMP)`,
-                [acceptedResult.rows[0].id, hire.agreed_amount, commissionRate, commission, req.user.id, hire.customer_id]
+                `INSERT INTO accepted_jobs (provider_id, seeker_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'accepted')`,
+                [req.user.id, hire.customer_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
             );
         }
         
-        await pool.query('COMMIT');
-        
-        console.log(`✅✅✅ Hire request ${id} ${status} successfully!`);
-        
-        res.json({ 
-            success: true, 
-            message: status === 'accepted' 
-                ? 'Hire request accepted! The job has been added to your "My Jobs" tab.' 
-                : 'Hire request declined.',
-            status: status
-        });
-        
+        res.json({ success: true, message: status === 'accepted' ? 'Hire request accepted!' : 'Hire request declined' });
     } catch (error) {
-        await pool.query('ROLLBACK');
-        console.error('❌ Respond to hire error:', error);
-        res.status(500).json({ success: false, error: error.message, message: 'Failed to process request. Please try again.' });
+        console.error('Respond error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -930,266 +743,11 @@ app.get('/api/seeker/direct-hires', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================== COMMISSION SYSTEM ====================
+// ==================== COMMISSION ====================
 app.get('/api/commission/rate', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
-        const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
-        res.json({ success: true, commission_rate: rate });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.put('/api/commission/rate', authenticateToken, isAdmin, async (req, res) => {
-    const { rate } = req.body;
-    
-    if (!rate || rate < 0 || rate > 100) {
-        return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
-    }
-    
-    try {
-        await pool.query(
-            `INSERT INTO admin_settings (setting_key, setting_value, updated_at) 
-             VALUES ('commission_rate', $1, CURRENT_TIMESTAMP)
-             ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`,
-            [rate]
-        );
-        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.get('/api/commission/earnings', authenticateToken, isAdmin, async (req, res) => {
-    try {
-        const totalResult = await pool.query(`SELECT COALESCE(SUM(platform_commission), 0) as total_earnings FROM accepted_jobs WHERE status = 'completed'`);
-        
-        const recentResult = await pool.query(`
-            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
-                   aj.completed_at, p.full_name as provider_name, s.full_name as seeker_name,
-                   jp.title as job_title
-            FROM accepted_jobs aj
-            JOIN users p ON aj.provider_id = p.id
-            JOIN users s ON aj.seeker_id = s.id
-            LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-            WHERE aj.status = 'completed'
-            ORDER BY aj.completed_at DESC
-            LIMIT 20
-        `);
-        
-        res.json({
-            success: true,
-            total_earnings: parseFloat(totalResult.rows[0].total_earnings),
-            recent_transactions: recentResult.rows
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ==================== CHAT SYSTEM ====================
-async function getOrCreateConversation(seekerId, providerId, jobId = null, directHireId = null) {
-    let query = `SELECT * FROM conversations WHERE seeker_id = $1 AND provider_id = $2`;
-    let params = [seekerId, providerId];
-    
-    if (jobId) {
-        query += ` AND job_id = $3`;
-        params.push(jobId);
-    }
-    
-    let result = await pool.query(query, params);
-    
-    if (result.rows.length > 0) {
-        return result.rows[0];
-    }
-    
-    const insertResult = await pool.query(
-        `INSERT INTO conversations (seeker_id, provider_id, job_id, direct_hire_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-         RETURNING *`,
-        [seekerId, providerId, jobId || null, directHireId || null]
-    );
-    
-    return insertResult.rows[0];
-}
-
-app.post('/api/conversations', authenticateToken, async (req, res) => {
-    const { provider_id, job_id, direct_hire_id } = req.body;
-    
-    if (req.user.user_type !== 'seeker') {
-        return res.status(403).json({ success: false, message: 'Only seekers can initiate conversations' });
-    }
-    
-    try {
-        const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id, direct_hire_id);
-        res.json({ success: true, conversation });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
-    const { seeker_id, job_id, direct_hire_id } = req.body;
-    
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can initiate conversations' });
-    }
-    
-    try {
-        const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id, direct_hire_id);
-        res.json({ success: true, conversation });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/messages', authenticateToken, async (req, res) => {
-    const { conversation_id, receiver_id, message, message_type, offer_amount } = req.body;
-    
-    try {
-        let conversation;
-        let receiverId = receiver_id;
-        
-        if (conversation_id) {
-            const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversation_id]);
-            if (convResult.rows.length === 0) {
-                return res.status(404).json({ success: false, message: 'Conversation not found' });
-            }
-            conversation = convResult.rows[0];
-            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
-        } else {
-            if (!receiver_id) {
-                return res.status(400).json({ success: false, message: 'Receiver ID required' });
-            }
-            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
-            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
-            conversation = await getOrCreateConversation(seekerId, providerId);
-        }
-        
-        const result = await pool.query(
-            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, message_type, offer_amount, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-             RETURNING *`,
-            [conversation.id, req.user.id, receiverId, message, message_type || 'text', offer_amount || null]
-        );
-        
-        await pool.query(
-            `UPDATE conversations 
-             SET last_message = $1, last_message_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
-                 ${req.user.user_type === 'seeker' ? 'seeker_unread_count = seeker_unread_count + 1' : 'provider_unread_count = provider_unread_count + 1'}
-             WHERE id = $2`,
-            [message || `💰 Offer: GHS ${offer_amount}`, conversation.id]
-        );
-        
-        const messageWithSender = await pool.query(
-            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
-             FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = $1`,
-            [result.rows[0].id]
-        );
-        
-        res.json({ success: true, message: messageWithSender.rows[0] });
-    } catch (error) {
-        console.error('Send message error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
-    const { conversationId } = req.params;
-    
-    try {
-        const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversationId]);
-        
-        if (convResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Conversation not found' });
-        }
-        
-        const conversation = convResult.rows[0];
-        
-        if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'Access denied' });
-        }
-        
-        const messagesResult = await pool.query(
-            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
-             FROM messages m JOIN users u ON m.sender_id = u.id
-             WHERE m.conversation_id = $1 ORDER BY m.created_at ASC`,
-            [conversationId]
-        );
-        
-        await pool.query(
-            `UPDATE messages SET is_read = true, read_at = CURRENT_TIMESTAMP
-             WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
-            [conversationId, req.user.id]
-        );
-        
-        if (req.user.user_type === 'seeker') {
-            await pool.query('UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1', [conversationId]);
-        } else {
-            await pool.query('UPDATE conversations SET provider_unread_count = 0 WHERE id = $1', [conversationId]);
-        }
-        
-        res.json({ success: true, messages: messagesResult.rows, conversation });
-    } catch (error) {
-        console.error('Get messages error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.get('/api/conversations', authenticateToken, async (req, res) => {
-    try {
-        let query;
-        let params = [req.user.id];
-        
-        if (req.user.user_type === 'seeker') {
-            query = `
-                SELECT c.*, u.full_name as other_user_name, u.user_type as other_user_type,
-                       jp.title as job_title
-                FROM conversations c
-                JOIN users u ON c.provider_id = u.id
-                LEFT JOIN job_posts jp ON c.job_id = jp.id
-                WHERE c.seeker_id = $1
-                ORDER BY c.updated_at DESC
-            `;
-        } else {
-            query = `
-                SELECT c.*, u.full_name as other_user_name, u.user_type as other_user_type,
-                       jp.title as job_title
-                FROM conversations c
-                JOIN users u ON c.seeker_id = u.id
-                LEFT JOIN job_posts jp ON c.job_id = jp.id
-                WHERE c.provider_id = $1
-                ORDER BY c.updated_at DESC
-            `;
-        }
-        
-        const result = await pool.query(query, params);
-        
-        const conversationsWithUnread = result.rows.map(conv => ({
-            ...conv,
-            unread_count: req.user.user_type === 'seeker' ? conv.seeker_unread_count : conv.provider_unread_count
-        }));
-        
-        res.json({ success: true, conversations: conversationsWithUnread });
-    } catch (error) {
-        console.error('Get conversations error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
-    try {
-        let result;
-        if (req.user.user_type === 'seeker') {
-            result = await pool.query('SELECT COALESCE(SUM(seeker_unread_count), 0) as total FROM conversations WHERE seeker_id = $1', [req.user.id]);
-        } else {
-            result = await pool.query('SELECT COALESCE(SUM(provider_unread_count), 0) as total FROM conversations WHERE provider_id = $1', [req.user.id]);
-        }
-        res.json({ success: true, unread_count: parseInt(result.rows[0].total) || 0 });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+    const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
+    const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
+    res.json({ success: true, commission_rate: rate });
 });
 
 // ==================== DASHBOARD STATS ====================
@@ -1220,31 +778,156 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     }
 });
 
-// ==================== HEALTH CHECK ====================
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', message: 'Service Connect Platform is running!' });
+// ==================== CHAT SYSTEM ====================
+async function getOrCreateConversation(seekerId, providerId, jobId = null, directHireId = null) {
+    let result = await pool.query(
+        `SELECT * FROM conversations WHERE seeker_id = $1 AND provider_id = $2`,
+        [seekerId, providerId]
+    );
+    
+    if (result.rows.length > 0) {
+        return result.rows[0];
+    }
+    
+    const insertResult = await pool.query(
+        `INSERT INTO conversations (seeker_id, provider_id, job_id, direct_hire_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [seekerId, providerId, jobId || null, directHireId || null]
+    );
+    
+    return insertResult.rows[0];
+}
+
+app.post('/api/conversations', authenticateToken, async (req, res) => {
+    const { provider_id, job_id, direct_hire_id } = req.body;
+    
+    if (req.user.user_type !== 'seeker') {
+        return res.status(403).json({ success: false, message: 'Only seekers can initiate conversations' });
+    }
+    
+    const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id, direct_hire_id);
+    res.json({ success: true, conversation });
 });
 
-// ==================== CREATE ADMIN ENDPOINT ====================
+app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
+    const { seeker_id, job_id, direct_hire_id } = req.body;
+    
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can initiate conversations' });
+    }
+    
+    const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id, direct_hire_id);
+    res.json({ success: true, conversation });
+});
+
+app.post('/api/messages', authenticateToken, async (req, res) => {
+    const { conversation_id, receiver_id, message } = req.body;
+    
+    try {
+        let conversation;
+        let receiverId = receiver_id;
+        
+        if (conversation_id) {
+            const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversation_id]);
+            conversation = convResult.rows[0];
+            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
+        } else {
+            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
+            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
+            conversation = await getOrCreateConversation(seekerId, providerId);
+        }
+        
+        const result = await pool.query(
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message)
+             VALUES ($1, $2, $3, $4)
+             RETURNING *`,
+            [conversation.id, req.user.id, receiverId, message]
+        );
+        
+        await pool.query(
+            `UPDATE conversations 
+             SET last_message = $1, last_message_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2`,
+            [message, conversation.id]
+        );
+        
+        res.json({ success: true, message: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
+    const { conversationId } = req.params;
+    
+    const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversationId]);
+    if (convResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+    
+    const conversation = convResult.rows[0];
+    if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    
+    const messagesResult = await pool.query(
+        `SELECT m.*, u.full_name as sender_name
+         FROM messages m JOIN users u ON m.sender_id = u.id
+         WHERE m.conversation_id = $1 ORDER BY m.created_at ASC`,
+        [conversationId]
+    );
+    
+    res.json({ success: true, messages: messagesResult.rows, conversation });
+});
+
+app.get('/api/conversations', authenticateToken, async (req, res) => {
+    let query;
+    if (req.user.user_type === 'seeker') {
+        query = `
+            SELECT c.*, u.full_name as other_user_name
+            FROM conversations c
+            JOIN users u ON c.provider_id = u.id
+            WHERE c.seeker_id = $1
+            ORDER BY c.updated_at DESC
+        `;
+    } else {
+        query = `
+            SELECT c.*, u.full_name as other_user_name
+            FROM conversations c
+            JOIN users u ON c.seeker_id = u.id
+            WHERE c.provider_id = $1
+            ORDER BY c.updated_at DESC
+        `;
+    }
+    
+    const result = await pool.query(query, [req.user.id]);
+    res.json({ success: true, conversations: result.rows });
+});
+
+app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+    res.json({ success: true, unread_count: 0 });
+});
+
+// ==================== HEALTH CHECK ====================
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', message: 'Service Connect is running!' });
+});
+
+// ==================== CREATE ADMIN ====================
 app.get('/api/create-admin', async (req, res) => {
     try {
-        const bcrypt = require('bcryptjs');
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash('admin123', salt);
         
         await pool.query("DELETE FROM users WHERE email = 'admin@serviceconnect.com'");
-        
         await pool.query(
-            `INSERT INTO users (email, password_hash, full_name, user_type, is_verified, created_at)
-             VALUES ($1, $2, $3, $4, true, NOW())`,
+            `INSERT INTO users (email, password_hash, full_name, user_type, is_verified)
+             VALUES ($1, $2, $3, $4, true)`,
             ['admin@serviceconnect.com', hashedPassword, 'System Admin', 'admin']
         );
         
-        res.json({ 
-            success: true, 
-            message: 'Admin created successfully!',
-            credentials: { email: 'admin@serviceconnect.com', password: 'admin123' }
-        });
+        res.json({ success: true, message: 'Admin created! Login: admin@serviceconnect.com / admin123' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1252,32 +935,17 @@ app.get('/api/create-admin', async (req, res) => {
 
 // ==================== SERVE FRONTEND ====================
 function findHtmlFile(filename) {
-    const possiblePaths = [
-        path.join(__dirname, 'frontend', filename),
-        path.join(__dirname, filename)
-    ];
-    
-    for (const filePath of possiblePaths) {
-        if (fs.existsSync(filePath)) {
-            return filePath;
-        }
+    const paths = [path.join(__dirname, 'frontend', filename), path.join(__dirname, filename)];
+    for (const p of paths) {
+        if (fs.existsSync(p)) return p;
     }
     return null;
 }
 
 app.get('/', (req, res) => {
     const filePath = findHtmlFile('index.html');
-    if (filePath) {
-        res.sendFile(filePath);
-    } else {
-        res.send('<h1>Service Connect API</h1><p>Server is running!</p><a href="/api/health">Health Check</a>');
-    }
-});
-
-app.get('/seeker-dashboard.html', (req, res) => {
-    const filePath = findHtmlFile('seeker-dashboard.html');
     if (filePath) res.sendFile(filePath);
-    else res.status(404).send('File not found');
+    else res.send('<h1>Service Connect API</h1><p>Server is running!</p>');
 });
 
 app.get('/provider-dashboard.html', (req, res) => {
@@ -1286,8 +954,8 @@ app.get('/provider-dashboard.html', (req, res) => {
     else res.status(404).send('File not found');
 });
 
-app.get('/admin-dashboard.html', (req, res) => {
-    const filePath = findHtmlFile('admin-dashboard.html');
+app.get('/seeker-dashboard.html', (req, res) => {
+    const filePath = findHtmlFile('seeker-dashboard.html');
     if (filePath) res.sendFile(filePath);
     else res.status(404).send('File not found');
 });
@@ -1304,24 +972,14 @@ app.get('/chat.html', (req, res) => {
     else res.status(404).send('File not found');
 });
 
+app.get('/admin-dashboard.html', (req, res) => {
+    const filePath = findHtmlFile('admin-dashboard.html');
+    if (filePath) res.sendFile(filePath);
+    else res.status(404).send('File not found');
+});
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`
-╔═══════════════════════════════════════════════════════════════════╗
-║                                                                   ║
-║     🔗 SERVICE CONNECT PLATFORM - COMPLETE                        ║
-║                                                                   ║
-║     ✅ Server running on port ${PORT}                               ║
-║     ✅ Database connected                                          ║
-║     ✅ Auth System Working                                         ║
-║     ✅ Accept Bid FIXED                                            ║
-║     ✅ Commission System (10%)                                     ║
-║     ✅ Chat System                                                 ║
-║                                                                   ║
-║     🌐 https://service-connect-7akg.onrender.com                  ║
-║                                                                   ║
-║     📝 Create Admin: /api/create-admin                           ║
-║                                                                   ║
-╚═══════════════════════════════════════════════════════════════════╝
-    `);
+    console.log(`\n✅ Server running on port ${PORT}`);
+    console.log(`🌐 https://service-connect-7akg.onrender.com\n`);
 });
