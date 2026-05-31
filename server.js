@@ -10,7 +10,13 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
+// Simple email logger (temporary - emails will log to console)
+// To enable real emails, install nodemailer and add email credentials to .env
+const sendEmail = async (to, type, data) => {
+    console.log(`📧 [EMAIL NOTIFICATION] To: ${to}, Type: ${type}`);
+    console.log(`   Data:`, data);
+    return true;
+};
 
 // Middleware
 app.use(cors());
