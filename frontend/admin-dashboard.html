@@ -25,9 +25,13 @@
         .stat-card h3 { font-size: 14px; opacity: 0.7; margin-bottom: 10px; }
         .stat-card .value { font-size: 36px; font-weight: 700; }
         .stat-card .small { font-size: 14px; opacity: 0.7; margin-top: 10px; }
+        .stat-card .badge-free { background: #10b981; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; margin-top: 10px; }
         
         .card { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 25px; margin-bottom: 30px; backdrop-filter: blur(10px); }
         .card h2 { margin-bottom: 20px; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+        
+        .info-box { background: rgba(0,232,160,0.1); border-left: 4px solid #00e8a0; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .info-box p { margin: 5px 0; font-size: 14px; }
         
         .commission-rate { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
         .commission-rate input { padding: 12px 20px; border-radius: 12px; border: none; font-size: 16px; width: 150px; }
@@ -39,7 +43,6 @@
         
         .badge { background: #00e8a0; color: #0f0c29; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
         .badge-open { background: #3b82f6; color: white; }
-        .badge-assigned { background: #f59e0b; color: white; }
         .badge-completed { background: #10b981; color: white; }
         
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
@@ -49,7 +52,7 @@
         .tab-btn.active { background: rgba(0,232,160,0.2); color: #00e8a0; }
         
         .status-filter { margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        .status-filter select, .status-filter input { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; }
+        .status-filter input, .status-filter select { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; }
         .status-filter input { width: 200px; }
         .status-filter input::placeholder { color: rgba(255,255,255,0.5); }
         
@@ -69,57 +72,108 @@
     <div class="container">
         <h1 style="margin-bottom: 30px;"><i class="fas fa-chart-line"></i> Admin Dashboard</h1>
         
+        <!-- Free Mode Notice -->
+        <div class="info-box">
+            <i class="fas fa-info-circle"></i> <strong>Platform Mode: FREE (Building Trust Phase)</strong>
+            <p>• Users pay each other directly (cash, mobile money, bank transfer)</p>
+            <p>• Your commission (10%) is being tracked - not collected yet</p>
+            <p>• When ready to monetize, enable Paystack integration</p>
+            <p>• Total potential earnings below show what you WOULD have earned</p>
+        </div>
+        
         <!-- Stats Grid -->
         <div class="stats-grid" id="statsGrid">
-            <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Total Platform Earnings</h3><div class="value" id="totalEarnings">GHS 0</div><div class="small">Lifetime commission collected</div></div>
+            <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Total Transaction Value</h3><div class="value" id="totalValue">GHS 0</div><div class="small">Total value of all completed jobs</div></div>
+            <div class="stat-card"><h3><i class="fas fa-percent"></i> Your Commission (10%)</h3><div class="value" id="totalCommission">GHS 0</div><div class="small">What you WOULD have earned</div><div class="badge-free">💰 Not Collected (Free Mode)</div></div>
             <div class="stat-card"><h3><i class="fas fa-users"></i> Total Users</h3><div class="value" id="totalUsers">0</div><div class="small" id="userBreakdown">Seekers: 0 | Providers: 0</div></div>
-            <div class="stat-card"><h3><i class="fas fa-briefcase"></i> Open Jobs</h3><div class="value" id="openJobs">0</div><div class="small">Jobs available for providers</div></div>
-            <div class="stat-card"><h3><i class="fas fa-percent"></i> Commission Rate</h3><div class="value" id="currentRate">10%</div><div class="small">Applied to all transactions</div></div>
+            <div class="stat-card"><h3><i class="fas fa-briefcase"></i> Completed Jobs</h3><div class="value" id="completedJobs">0</div><div class="small">Jobs successfully finished</div></div>
         </div>
         
         <!-- Commission Settings -->
         <div class="card">
-            <h2><i class="fas fa-sliders-h"></i> Commission Settings</h2>
+            <h2><i class="fas fa-sliders-h"></i> Commission Settings (For Future Monetization)</h2>
             <div class="commission-rate">
                 <input type="number" id="commissionRate" step="0.5" min="0" max="100" value="10">
-                <button onclick="updateCommissionRate()"><i class="fas fa-save"></i> Update Commission Rate</button>
-                <p style="font-size: 14px; opacity: 0.7;"><i class="fas fa-info-circle"></i> New rate applies to future transactions only</p>
+                <button onclick="updateCommissionRate()"><i class="fas fa-save"></i> Update Rate</button>
+                <p style="font-size: 14px; opacity: 0.7;"><i class="fas fa-info-circle"></i> This rate will apply when you enable payments</p>
             </div>
         </div>
         
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab-btn active" onclick="showTab('transactions')">💰 Transactions</button>
+            <button class="tab-btn active" onclick="showTab('transactions')">💰 All Transactions</button>
             <button class="tab-btn" onclick="showTab('users')">👥 Users</button>
-            <button class="tab-btn" onclick="showTab('jobs')">📋 Job Posts (Seeker Jobs)</button>
+            <button class="tab-btn" onclick="showTab('jobs')">📋 Job Posts</button>
             <button class="tab-btn" onclick="showTab('services')">🔧 Provider Services</button>
         </div>
         
         <!-- Transactions Tab -->
         <div id="transactionsTab" class="card">
-            <h2><i class="fas fa-history"></i> Recent Commission Transactions</h2>
-            <div style="overflow-x: auto;"><table id="transactionsTable"><thead><tr><th>Job Title</th><th>Amount</th><th>Commission</th><th>Provider</th><th>Customer</th><th>Date</th></tr></thead><tbody id="transactionsList"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
+            <h2><i class="fas fa-history"></i> All Completed Transactions</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr><th>ID</th><th>Job Title</th><th>Agreed Amount</th><th>Your 10% Commission</th><th>Provider</th><th>Customer</th><th>Completed</th><th>Status</th></tr>
+                    </thead>
+                    <tbody id="transactionsList">
+                        <tr><td colspan="8" style="text-align: center;">Loading...<\/td><\/tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
         
         <!-- Users Tab -->
         <div id="usersTab" class="card" style="display: none;">
             <h2><i class="fas fa-users"></i> All Users</h2>
-            <div class="status-filter"><input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="filterUsers()"><select id="userTypeFilter" onchange="filterUsers()"><option value="">All Types</option><option value="seeker">Seeker</option><option value="provider">Provider</option><option value="admin">Admin</option></select></div>
-            <div style="overflow-x: auto;"><table id="usersTable"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th></tr></thead><tbody id="usersList"><tr><td colspan="7">Loading...</td></tr></tbody></table></div>
+            <div class="status-filter">
+                <input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="filterUsers()">
+                <select id="userTypeFilter" onchange="filterUsers()">
+                    <option value="">All Types</option>
+                    <option value="seeker">Seeker</option>
+                    <option value="provider">Provider</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th></tr></thead>
+                    <tbody id="usersList"><tr><td colspan="7">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
         </div>
         
-        <!-- Jobs Tab (Job Posts from Seekers) -->
+        <!-- Jobs Tab -->
         <div id="jobsTab" class="card" style="display: none;">
             <h2><i class="fas fa-briefcase"></i> Job Posts (What Seekers Need)</h2>
-            <div class="status-filter"><input type="text" id="jobSearch" placeholder="Search by title..." onkeyup="filterJobs()"><select id="jobStatusFilter" onchange="filterJobs()"><option value="">All Status</option><option value="open">Open</option><option value="assigned">Assigned</option><option value="completed">Completed</option></select></div>
-            <div style="overflow-x: auto;"><table id="jobsTable"><thead><tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Location</th><th>Status</th><th>Bids</th><th>Created</th></tr></thead><tbody id="jobsList"><tr><td colspan="8">Loading...</td></tr></tbody></table></div>
+            <div class="status-filter">
+                <input type="text" id="jobSearch" placeholder="Search by title..." onkeyup="filterJobs()">
+                <select id="jobStatusFilter" onchange="filterJobs()">
+                    <option value="">All Status</option>
+                    <option value="open">Open</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="completed">Completed</option>
+                </select>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Location</th><th>Status</th><th>Bids</th><th>Created</th></tr></thead>
+                    <tbody id="jobsList"><tr><td colspan="8">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
         </div>
         
-        <!-- Provider Services Tab (What Providers Offer) - NEW -->
+        <!-- Provider Services Tab -->
         <div id="servicesTab" class="card" style="display: none;">
             <h2><i class="fas fa-tools"></i> Provider Services (What Providers Offer)</h2>
-            <div class="status-filter"><input type="text" id="serviceSearch" placeholder="Search by title or provider..." onkeyup="filterServices()"></div>
-            <div style="overflow-x: auto;"><table id="servicesTable"><thead><tr><th>ID</th><th>Service Title</th><th>Provider</th><th>Category</th><th>Price (GHS)</th><th>Price Type</th><th>Experience</th><th>Created</th></tr></thead><tbody id="servicesList"><tr><td colspan="8">Loading...</td></tr></tbody></table></div>
+            <div class="status-filter">
+                <input type="text" id="serviceSearch" placeholder="Search by title or provider..." onkeyup="filterServices()">
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>ID</th><th>Service Title</th><th>Provider</th><th>Category</th><th>Price</th><th>Type</th><th>Experience</th><th>Created</th></tr></thead>
+                    <tbody id="servicesList"><tr><td colspan="8">Loading...<\/td><\/tr></tbody>
+                </table>
+            </div>
         </div>
     </div>
     
@@ -149,14 +203,26 @@
         
         async function loadDashboard() {
             try {
+                // Get earnings data (potential earnings)
                 const earnings = await apiCall('/api/commission/earnings');
-                if (earnings.success) document.getElementById('totalEarnings').innerHTML = `GHS ${(earnings.total_earnings || 0).toLocaleString()}`;
+                if (earnings.success) {
+                    document.getElementById('totalValue').innerHTML = `GHS ${(earnings.total_transaction_value || 0).toLocaleString()}`;
+                    document.getElementById('totalCommission').innerHTML = `GHS ${(earnings.total_potential_commission || 0).toLocaleString()}`;
+                    document.getElementById('completedJobs').innerHTML = earnings.completed_jobs || 0;
+                }
+                
+                // Get commission rate
                 const rate = await apiCall('/api/commission/rate');
-                if (rate.success) { document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`; document.getElementById('commissionRate').value = rate.commission_rate || 10; }
+                if (rate.success) {
+                    document.getElementById('commissionRate').value = rate.commission_rate || 10;
+                }
+                
+                // Get users stats
                 const users = await apiCall('/api/admin/users');
-                if (users.success) { document.getElementById('totalUsers').innerHTML = users.total || 0; document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`; }
-                const jobs = await apiCall('/api/admin/jobs/stats');
-                if (jobs.success) document.getElementById('openJobs').innerHTML = jobs.open || 0;
+                if (users.success) {
+                    document.getElementById('totalUsers').innerHTML = users.total || 0;
+                    document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`;
+                }
             } catch (error) { console.error('Error loading stats:', error); }
         }
         
@@ -165,23 +231,46 @@
                 const result = await apiCall('/api/commission/earnings');
                 const tbody = document.getElementById('transactionsList');
                 if (result.success && result.recent_transactions && result.recent_transactions.length > 0) {
-                    tbody.innerHTML = result.recent_transactions.map(t => `<tr><td>${escapeHtml(t.job_title || 'Direct Hire')}</td><td>GHS ${t.agreed_amount || 0}</td><td style="color:#f59e0b;">GHS ${t.platform_commission || 0}</td><td>${escapeHtml(t.provider_name || '-')}</td><td>${escapeHtml(t.seeker_name || '-')}</td><td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td></tr>`).join('');
-                } else { tbody.innerHTML = '<tr><td colspan="6">No transactions yet</td></tr>'; }
-            } catch (error) { document.getElementById('transactionsList').innerHTML = '<tr><td colspan="6">Error loading transactions</td></tr>'; }
+                    tbody.innerHTML = result.recent_transactions.map((t, i) => `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>${escapeHtml(t.job_title || 'Direct Hire')}</td>
+                            <td>GHS ${t.agreed_amount || 0}</td>
+                            <td style="color: #f59e0b;">GHS ${t.platform_commission || 0} <small>(10%)</small></td>
+                            <td>${escapeHtml(t.provider_name || '-')}</td>
+                            <td>${escapeHtml(t.seeker_name || '-')}</td>
+                            <td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td>
+                            <td><span class="badge">Completed</span></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No transactions yet. When jobs are completed, they will appear here.</td></tr>';
+                }
+            } catch (error) {
+                document.getElementById('transactionsList').innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading transactions<\/td><\/tr>';
+            }
         }
         
         async function loadUsers() {
             try {
                 const result = await apiCall('/api/admin/users');
                 if (result.success && result.users) { allUsers = result.users; displayUsers(allUsers); }
-                else { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">No users found</td></tr>'; }
-            } catch (error) { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">Error loading users</td></tr>'; }
+                else { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">No users found<\/td><\/tr>'; }
+            } catch (error) { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">Error loading users<\/td><\/tr>'; }
         }
         
         function displayUsers(users) {
             const tbody = document.getElementById('usersList');
-            if (users.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No users match your search</td></tr>'; return; }
-            tbody.innerHTML = users.map(u => `<tr><td>${u.id}</td><td>${escapeHtml(u.full_name)}</td><td>${escapeHtml(u.email)}</td><td><span class="badge">${u.user_type}</span></td><td>${u.phone || '-'}</td><td>${escapeHtml(u.location || '-')}</td><td>${new Date(u.created_at).toLocaleDateString()}</td></tr>`).join('');
+            if (users.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No users match your search<\/td><\/tr>'; return; }
+            tbody.innerHTML = users.map(u => `<tr>
+                <td>${u.id}</td>
+                <td>${escapeHtml(u.full_name)}</td>
+                <td>${escapeHtml(u.email)}<\/td>
+                <td><span class="badge">${u.user_type}</span></td>
+                <td>${u.phone || '-'}<\/td>
+                <td>${escapeHtml(u.location || '-')}<\/td>
+                <td>${new Date(u.created_at).toLocaleDateString()}<\/td>
+            80`).join('');
         }
         
         function filterUsers() {
@@ -197,14 +286,23 @@
             try {
                 const result = await apiCall('/api/admin/jobs');
                 if (result.success && result.jobs && result.jobs.length > 0) { allJobs = result.jobs; displayJobs(allJobs); }
-                else { document.getElementById('jobsList').innerHTML = '<tr><td colspan="8">No job posts found</td></tr>'; }
-            } catch (error) { document.getElementById('jobsList').innerHTML = '<tr><td colspan="8">Error loading jobs</td></tr>'; }
+                else { document.getElementById('jobsList').innerHTML = '<tr><td colspan="8">No job posts found<\/td><\/tr>'; }
+            } catch (error) { document.getElementById('jobsList').innerHTML = '<td><td colspan="8">Error loading jobs<\/td><\/tr>'; }
         }
         
         function displayJobs(jobs) {
             const tbody = document.getElementById('jobsList');
-            if (jobs.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No jobs match your search</td></tr>'; return; }
-            tbody.innerHTML = jobs.map(j => `<tr><td>${j.id}</td><td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small style="opacity:0.7;">${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td><td>${escapeHtml(j.seeker_name || 'Unknown')}</td><td>GHS ${j.budget || 0}</td><td>${escapeHtml(j.location || '-')}</td><td><span class="badge ${j.status === 'open' ? 'badge-open' : j.status === 'assigned' ? 'badge-assigned' : 'badge-completed'}">${j.status || 'open'}</span></td><td>${j.bid_count || 0}</td><td>${new Date(j.created_at).toLocaleDateString()}</td></tr>`).join('');
+            if (jobs.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No jobs match your search<\/td><\/tr>'; return; }
+            tbody.innerHTML = jobs.map(j => `<tr>
+                <td>${j.id}</td>
+                <td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small style="opacity:0.7;">${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td>
+                <td>${escapeHtml(j.seeker_name || 'Unknown')}</td>
+                <td>GHS ${j.budget || 0}<\/td>
+                <td>${escapeHtml(j.location || '-')}<\/td>
+                <td><span class="badge ${j.status === 'open' ? 'badge-open' : 'badge-completed'}">${j.status || 'open'}</span></td>
+                <td>${j.bid_count || 0}<\/td>
+                <td>${new Date(j.created_at).toLocaleDateString()}<\/td>
+            80`).join('');
         }
         
         function filterJobs() {
@@ -216,19 +314,27 @@
             displayJobs(filtered);
         }
         
-        // NEW: Load Provider Services
         async function loadServices() {
             try {
                 const result = await apiCall('/api/admin/services');
                 if (result.success && result.services && result.services.length > 0) { allServices = result.services; displayServices(allServices); }
-                else { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">No provider services found</td></tr>'; }
-            } catch (error) { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">Error loading services</td></tr>'; }
+                else { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">No provider services found<\/td><\/tr>'; }
+            } catch (error) { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">Error loading services<\/td><\/tr>'; }
         }
         
         function displayServices(services) {
             const tbody = document.getElementById('servicesList');
-            if (services.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No services match your search</td></tr>'; return; }
-            tbody.innerHTML = services.map(s => `<tr><td>${s.id}</td><td><strong>${escapeHtml(s.title)}</strong><br><small style="opacity:0.7;">${escapeHtml((s.description || '').substring(0, 40))}${s.description?.length > 40 ? '...' : ''}</small></td><td>${escapeHtml(s.provider_name)}</td><td>${escapeHtml(s.category_name)}</td><td>GHS ${s.price || 'Negotiable'}</td><td>${s.price_type || 'fixed'}</td><td>${s.experience_years || 0} years</td><td>${new Date(s.created_at).toLocaleDateString()}</td></tr>`).join('');
+            if (services.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No services match your search<\/td><\/tr>'; return; }
+            tbody.innerHTML = services.map(s => `<tr>
+                <td>${s.id}</td>
+                <td><strong>${escapeHtml(s.title)}</strong><br><small>${escapeHtml((s.description || '').substring(0, 40))}${s.description?.length > 40 ? '...' : ''}</small></td>
+                <td>${escapeHtml(s.provider_name)}<\/td>
+                <td>${escapeHtml(s.category_name)}<\/td>
+                <td>GHS ${s.price || 'Negotiable'}<\/td>
+                <td>${s.price_type || 'fixed'}<\/td>
+                <td>${s.experience_years || 0} years<\/td>
+                <td>${new Date(s.created_at).toLocaleDateString()}<\/td>
+            80`).join('');
         }
         
         function filterServices() {
@@ -261,7 +367,7 @@
         function showToast(msg, type) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
-            toast.style.backgroundColor = type === 'error' ? '#ef4444' : type === 'info' ? '#3b82f6' : '#10b981';
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
             toast.style.display = 'block';
             setTimeout(() => toast.style.display = 'none', 3000);
         }
