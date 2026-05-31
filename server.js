@@ -1528,6 +1528,248 @@ app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== FIXED USER MANAGEMENT ENDPOINTS ====================
+
+// Get all users with filters (admin)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { search, type, status, limit = 100 } = req.query;
+    
+    try {
+        let query = `SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE 1=1`;
+        let params = [];
+        
+        if (search) {
+            params.push(`%${search}%`);
+            query += ` AND (full_name ILIKE $${params.length} OR email ILIKE $${params.length})`;
+        }
+        if (type && type !== 'all') {
+            params.push(type);
+            query += ` AND user_type = $${params.length}`;
+        }
+        if (status === 'active') {
+            query += ` AND is_active = true`;
+        } else if (status === 'inactive') {
+            query += ` AND is_active = false`;
+        }
+        
+        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+        params.push(limit);
+        
+        const result = await pool.query(query, params);
+        
+        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
+        const providers = result.rows.filter(u => u.user_type === 'provider').length;
+        const admins = result.rows.filter(u => u.user_type === 'admin').length;
+        const active = result.rows.filter(u => u.is_active === true).length;
+        
+        res.json({ 
+            success: true, 
+            users: result.rows, 
+            total: result.rows.length,
+            seekers, providers, admins,
+            active,
+            inactive: result.rows.length - active
+        });
+    } catch (error) {
+        console.error('Error getting users:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get single user details (admin)
+app.get('/api/admin/users/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    try {
+        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE id = $1`, [id]);
+        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+        res.json({ success: true, user: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create new user (admin)
+app.post('/api/admin/users', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { email, password, full_name, phone, location, user_type } = req.body;
+    if (!email || !password || !full_name) {
+        return res.status(400).json({ success: false, message: 'Email, password, and full name required' });
+    }
+    try {
+        const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ success: false, message: 'User already exists' });
+        }
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        const result = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, phone, location, user_type, is_verified)
+             VALUES ($1, $2, $3, $4, $5, $6, true)
+             RETURNING id, email, full_name, user_type`,
+            [email, hashedPassword, full_name, phone || '', location || '', user_type || 'seeker']
+        );
+        res.json({ success: true, user: result.rows[0], message: 'User created successfully' });
+    } catch (error) {
+        console.error('Create user error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update user (admin) - FIXED
+app.put('/api/admin/users/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { full_name, phone, location, user_type, is_active, is_verified, rating } = req.body;
+    
+    console.log(`Updating user ${id}:`, { full_name, phone, location, user_type, is_active, is_verified, rating });
+    
+    try {
+        // First check if user exists
+        const checkUser = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+        if (checkUser.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        // Build dynamic update query
+        const updates = [];
+        const values = [];
+        let paramCount = 1;
+        
+        if (full_name !== undefined) { updates.push(`full_name = $${paramCount++}`); values.push(full_name); }
+        if (phone !== undefined) { updates.push(`phone = $${paramCount++}`); values.push(phone); }
+        if (location !== undefined) { updates.push(`location = $${paramCount++}`); values.push(location); }
+        if (user_type !== undefined) { updates.push(`user_type = $${paramCount++}`); values.push(user_type); }
+        if (is_active !== undefined) { updates.push(`is_active = $${paramCount++}`); values.push(is_active); }
+        if (is_verified !== undefined) { updates.push(`is_verified = $${paramCount++}`); values.push(is_verified); }
+        if (rating !== undefined) { updates.push(`rating = $${paramCount++}`); values.push(rating); }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({ success: false, message: 'No fields to update' });
+        }
+        
+        values.push(id);
+        const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`;
+        
+        await pool.query(query, values);
+        
+        console.log(`✅ User ${id} updated successfully`);
+        res.json({ success: true, message: 'User updated successfully' });
+    } catch (error) {
+        console.error('Update user error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete user (admin) - HARD DELETE (FIXED)
+app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    
+    // Don't allow deleting yourself
+    if (parseInt(id) === req.user.id) {
+        return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
+    }
+    
+    try {
+        // Check if user exists
+        const checkUser = await pool.query('SELECT id, full_name, user_type FROM users WHERE id = $1', [id]);
+        if (checkUser.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        const user = checkUser.rows[0];
+        
+        // Don't allow deleting admin if only one admin
+        if (user.user_type === 'admin') {
+            const adminCount = await pool.query("SELECT COUNT(*) FROM users WHERE user_type = 'admin'");
+            if (parseInt(adminCount.rows[0].count) <= 1) {
+                return res.status(400).json({ success: false, message: 'Cannot delete the only admin account' });
+            }
+        }
+        
+        // Soft delete - set is_active to false (recommended)
+        await pool.query('UPDATE users SET is_active = false WHERE id = $1', [id]);
+        
+        console.log(`✅ User ${user.full_name} (ID: ${id}) has been deactivated`);
+        res.json({ success: true, message: `User "${user.full_name}" has been deactivated` });
+    } catch (error) {
+        console.error('Delete user error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Toggle user status (activate/deactivate) - FIXED
+app.put('/api/admin/users/:id/toggle-status', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    
+    // Don't allow toggling your own status
+    if (parseInt(id) === req.user.id) {
+        return res.status(400).json({ success: false, message: 'You cannot change your own status' });
+    }
+    
+    try {
+        const current = await pool.query('SELECT is_active, full_name FROM users WHERE id = $1', [id]);
+        if (current.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        const newStatus = !current.rows[0].is_active;
+        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [newStatus, id]);
+        
+        const message = newStatus ? `User "${current.rows[0].full_name}" has been activated` : `User "${current.rows[0].full_name}" has been deactivated`;
+        console.log(`✅ ${message}`);
+        res.json({ success: true, is_active: newStatus, message: message });
+    } catch (error) {
+        console.error('Toggle user status error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Reset user password (admin)
+app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { new_password } = req.body;
+    if (!new_password || new_password.length < 4) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 4 characters' });
+    }
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(new_password, salt);
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, id]);
+        res.json({ success: true, message: 'Password reset successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get user statistics (admin)
+app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN user_type = 'seeker' THEN 1 END) as seekers,
+                COUNT(CASE WHEN user_type = 'provider' THEN 1 END) as providers,
+                COUNT(CASE WHEN user_type = 'admin' THEN 1 END) as admins,
+                COUNT(CASE WHEN is_active = true THEN 1 END) as active,
+                COUNT(CASE WHEN is_active = false THEN 1 END) as inactive,
+                COUNT(CASE WHEN is_verified = true THEN 1 END) as verified
+            FROM users
+        `);
+        res.json({ success: true, stats: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
