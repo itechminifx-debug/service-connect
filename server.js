@@ -1163,6 +1163,29 @@ app.get('/api/debug/jobs', authenticateToken, async (req, res) => {
         res.json({ error: error.message });
     }
 });
+// Get all provider services (admin only)
+app.get('/api/admin/services', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    try {
+        const result = await pool.query(`
+            SELECT ps.*, u.full_name as provider_name, c.name as category_name
+            FROM provider_services ps
+            JOIN users u ON ps.provider_id = u.id
+            JOIN categories c ON ps.category_id = c.id
+            WHERE ps.is_active = true
+            ORDER BY ps.created_at DESC
+            LIMIT 100
+        `);
+        
+        res.json({ success: true, services: result.rows });
+    } catch (error) {
+        console.error('Error getting services:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
