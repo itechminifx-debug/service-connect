@@ -10,6 +10,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Import email service
+const { sendEmail } = require('./emailService');
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -279,6 +282,12 @@ app.post('/api/auth/register', async (req, res) => {
             { expiresIn: '7d' }
         );
         
+        // Send Welcome Email
+        sendEmail(email, 'welcome', { 
+            name: full_name, 
+            userType: user_type || 'seeker' 
+        }).catch(console.error);
+        
         res.json({ success: true, token, user });
     } catch (error) {
         console.error('Registration error:', error);
@@ -421,6 +430,15 @@ app.post('/api/jobs/:jobId/bids', authenticateToken, async (req, res) => {
     const { amount, estimated_days, message } = req.body;
     
     try {
+        // Get job details for email
+        const jobInfo = await pool.query(
+            `SELECT jp.*, u.email as seeker_email, u.full_name as seeker_name 
+             FROM job_posts jp
+             JOIN users u ON jp.seeker_id = u.id
+             WHERE jp.id = $1`,
+            [req.params.jobId]
+        );
+        
         const existingBid = await pool.query(
             'SELECT id FROM bids WHERE job_post_id = $1 AND provider_id = $2',
             [req.params.jobId, req.user.id]
@@ -437,8 +455,26 @@ app.post('/api/jobs/:jobId/bids', authenticateToken, async (req, res) => {
             [req.params.jobId, req.user.id, amount, estimated_days, message]
         );
         
+        // Get provider name for email
+        const providerInfo = await pool.query(
+            'SELECT full_name FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        
+        // Send email to seeker about new bid
+        if (jobInfo.rows.length > 0) {
+            sendEmail(jobInfo.rows[0].seeker_email, 'newBid', {
+                seekerName: jobInfo.rows[0].seeker_name,
+                jobTitle: jobInfo.rows[0].title,
+                bidAmount: amount,
+                providerName: providerInfo.rows[0]?.full_name || 'A provider',
+                jobId: req.params.jobId
+            }).catch(console.error);
+        }
+        
         res.json({ success: true, bid: result.rows[0] });
     } catch (error) {
+        console.error('Place bid error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -452,9 +488,11 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
     
     try {
         const bidResult = await pool.query(
-            `SELECT b.*, jp.seeker_id, jp.id as job_id
+            `SELECT b.*, jp.seeker_id, jp.id as job_id, jp.title as job_title,
+                    u.email as provider_email, u.full_name as provider_name
              FROM bids b
              JOIN job_posts jp ON b.job_post_id = jp.id
+             JOIN users u ON b.provider_id = u.id
              WHERE b.id = $1`,
             [bidId]
         );
@@ -497,6 +535,20 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
         );
         
         await pool.query('COMMIT');
+        
+        // Get seeker name for email
+        const seekerInfo = await pool.query(
+            'SELECT full_name FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        
+        // Send email to provider that bid was accepted
+        sendEmail(bid.provider_email, 'bidAccepted', {
+            providerName: bid.provider_name,
+            jobTitle: bid.job_title,
+            amount: bid.amount,
+            seekerName: seekerInfo.rows[0]?.full_name || 'Customer'
+        }).catch(console.error);
         
         res.json({ success: true, message: `Bid accepted! Commission: ${commissionRate}%` });
     } catch (error) {
@@ -551,21 +603,45 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     const { status } = req.body;
     
     try {
+        // Get job details for email
+        const jobInfo = await pool.query(
+            `SELECT aj.*, jp.title as job_title, 
+                    s.email as seeker_email, s.full_name as seeker_name,
+                    p.full_name as provider_name
+             FROM accepted_jobs aj
+             JOIN job_posts jp ON aj.job_post_id = jp.id
+             JOIN users s ON aj.seeker_id = s.id
+             JOIN users p ON aj.provider_id = p.id
+             WHERE aj.id = $1 AND aj.provider_id = $2`,
+            [jobId, req.user.id]
+        );
+        
         await pool.query(
             `UPDATE accepted_jobs 
              SET status = $1, completed_at = CURRENT_TIMESTAMP 
              WHERE id = $2 AND provider_id = $3`,
             [status, jobId, req.user.id]
         );
+        
+        if (status === 'completed' && jobInfo.rows.length > 0) {
+            // Send email to seeker
+            sendEmail(jobInfo.rows[0].seeker_email, 'jobCompleted', {
+                seekerName: jobInfo.rows[0].seeker_name,
+                jobTitle: jobInfo.rows[0].job_title,
+                providerName: jobInfo.rows[0].provider_name,
+                amount: jobInfo.rows[0].agreed_amount
+            }).catch(console.error);
+        }
+        
         res.json({ success: true });
     } catch (error) {
+        console.error('Update job status error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ==================== PROVIDER SERVICES (COMPLETE CRUD WITH SOFT DELETE) ====================
+// ==================== PROVIDER SERVICES (COMPLETE CRUD) ====================
 
-// GET all services (only active ones)
 app.get('/api/provider/services', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json([]);
     
@@ -584,7 +660,6 @@ app.get('/api/provider/services', authenticateToken, async (req, res) => {
     }
 });
 
-// ADD new service
 app.post('/api/provider/services', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
@@ -608,7 +683,6 @@ app.post('/api/provider/services', authenticateToken, async (req, res) => {
     }
 });
 
-// EDIT/UPDATE service
 app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
     
@@ -643,7 +717,6 @@ app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// DELETE service (SOFT DELETE - FIXED)
 app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
         return res.status(403).json({ success: false, message: 'Only providers can delete services' });
@@ -651,10 +724,7 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
     
     const { id } = req.params;
     
-    console.log(`🗑️ Delete request for service ${id} by provider ${req.user.id}`);
-    
     try {
-        // Check if service exists and belongs to this provider
         const checkResult = await pool.query(
             'SELECT id, title FROM provider_services WHERE id = $1 AND provider_id = $2 AND is_active = true',
             [id, req.user.id]
@@ -664,18 +734,15 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
             return res.status(404).json({ success: false, message: 'Service not found or not yours' });
         }
         
-        // SOFT DELETE - Just mark as inactive
         await pool.query(
             'UPDATE provider_services SET is_active = false WHERE id = $1 AND provider_id = $2',
             [id, req.user.id]
         );
         
-        console.log(`✅ Service "${checkResult.rows[0].title}" (ID: ${id}) marked as inactive`);
-        
         res.json({ success: true, message: 'Service deleted successfully' });
     } catch (error) {
         console.error('Delete service error:', error);
-        res.status(500).json({ success: false, error: error.message, message: 'Database error: ' + error.message });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -711,8 +778,30 @@ app.post('/api/direct-hire', authenticateToken, async (req, res) => {
              RETURNING *`,
             [req.user.id, provider_id, service_id, message, agreed_amount]
         );
+        
+        // Get provider and service details for email
+        const providerInfo = await pool.query(
+            `SELECT u.email, u.full_name as provider_name, ps.title as service_title,
+                    c.full_name as customer_name
+             FROM provider_services ps
+             JOIN users u ON ps.provider_id = u.id
+             JOIN users c ON c.id = $1
+             WHERE ps.id = $2`,
+            [req.user.id, service_id]
+        );
+        
+        if (providerInfo.rows.length > 0) {
+            sendEmail(providerInfo.rows[0].email, 'newHireRequest', {
+                providerName: providerInfo.rows[0].provider_name,
+                serviceTitle: providerInfo.rows[0].service_title,
+                customerName: providerInfo.rows[0].customer_name,
+                amount: agreed_amount
+            }).catch(console.error);
+        }
+        
         res.json({ success: true, hire: result.rows[0] });
     } catch (error) {
+        console.error('Direct hire error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -1037,6 +1126,22 @@ app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
     res.json({ success: true, unread_count: 0 });
 });
 
+// ==================== TEST EMAIL ENDPOINT ====================
+app.post('/api/test-email', authenticateToken, async (req, res) => {
+    const { email } = req.body;
+    
+    if (!email) {
+        return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+    
+    const result = await sendEmail(email, 'welcome', { 
+        name: 'Test User', 
+        userType: 'seeker' 
+    });
+    
+    res.json({ success: result, message: result ? 'Email sent successfully!' : 'Failed to send email' });
+});
+
 // ==================== HEALTH CHECK ====================
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Service Connect is running!' });
@@ -1110,4 +1215,10 @@ app.get('/admin-dashboard.html', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
     console.log(`🌐 https://service-connect-7akg.onrender.com\n`);
+    console.log(`📧 Email notifications enabled!`);
+    console.log(`   - Welcome emails on registration`);
+    console.log(`   - New bid notifications`);
+    console.log(`   - Bid acceptance alerts`);
+    console.log(`   - Job completion emails`);
+    console.log(`   - Direct hire requests\n`);
 });
