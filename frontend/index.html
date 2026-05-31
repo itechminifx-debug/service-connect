@@ -503,7 +503,7 @@
                     <div class="form-group">
                         <div class="input-group">
                             <span class="input-icon"><i class="fas fa-lock"></i></span>
-                            <input type="password" id="regPassword" class="input-field" placeholder="Password * (min 6 characters)">
+                            <input type="password" id="regPassword" class="input-field" placeholder="Password * (min 4 characters)">
                         </div>
                     </div>
                     <div class="form-group">
@@ -526,9 +526,7 @@
 
         // Set default selected user type
         document.addEventListener('DOMContentLoaded', function() {
-            // Set default active tab to Login
             showLoginForm();
-            // Set default selected user type
             const seekerOption = document.querySelector('.user-type-option[data-type="seeker"]');
             if (seekerOption) {
                 seekerOption.classList.add('selected');
@@ -536,36 +534,24 @@
         });
 
         function showLoginForm() {
-            // Update tab styles
             document.getElementById('loginTab').classList.add('active');
             document.getElementById('registerTab').classList.remove('active');
-            
-            // Show/hide forms
             document.getElementById('loginForm').style.display = 'block';
             document.getElementById('registerForm').style.display = 'none';
             document.getElementById('userTypeGroup').style.display = 'none';
-            
-            // Update titles
             document.getElementById('formTitle').innerText = 'Welcome Back';
             document.getElementById('formSubtitle').innerText = 'Login to your account to continue';
-            
             hideMessage();
         }
 
         function showRegisterForm() {
-            // Update tab styles
             document.getElementById('registerTab').classList.add('active');
             document.getElementById('loginTab').classList.remove('active');
-            
-            // Show/hide forms
             document.getElementById('loginForm').style.display = 'none';
             document.getElementById('registerForm').style.display = 'block';
             document.getElementById('userTypeGroup').style.display = 'block';
-            
-            // Update titles
             document.getElementById('formTitle').innerText = 'Create Account';
             document.getElementById('formSubtitle').innerText = 'Join ServiceConnect today';
-            
             hideMessage();
         }
 
@@ -578,7 +564,7 @@
         }
 
         async function handleLogin() {
-            const email = document.getElementById('loginEmail').value;
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
             
             if (!email || !password) {
@@ -606,33 +592,35 @@
                             window.location.href = 'provider-dashboard.html';
                         } else if (data.user.user_type === 'seeker') {
                             window.location.href = 'seeker-dashboard.html';
-                        } else {
+                        } else if (data.user.user_type === 'admin') {
                             window.location.href = 'admin-dashboard.html';
+                        } else {
+                            window.location.href = 'index.html';
                         }
                     }, 1000);
                 } else {
-                    showMessage(data.message || 'Login failed', 'error');
+                    showMessage(data.message || 'Invalid email or password', 'error');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showMessage('Error connecting to server. Make sure the backend is running.', 'error');
+                showMessage('Connection error. Please try again.', 'error');
             }
         }
 
         async function handleRegister() {
-            const full_name = document.getElementById('regFullName').value;
-            const email = document.getElementById('regEmail').value;
-            const phone = document.getElementById('regPhone').value;
+            const full_name = document.getElementById('regFullName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const phone = document.getElementById('regPhone').value.trim();
             const password = document.getElementById('regPassword').value;
-            const location = document.getElementById('regLocation').value;
+            const location = document.getElementById('regLocation').value.trim();
             
             if (!full_name || !email || !password) {
                 showMessage('Please fill in all required fields', 'error');
                 return;
             }
             
-            if (password.length < 6) {
-                showMessage('Password must be at least 6 characters', 'error');
+            if (password.length < 4) {
+                showMessage('Password must be at least 4 characters', 'error');
                 return;
             }
             
@@ -645,9 +633,9 @@
                     body: JSON.stringify({
                         full_name,
                         email,
-                        phone,
+                        phone: phone || '',
                         password,
-                        location,
+                        location: location || '',
                         user_type: selectedUserType
                     })
                 });
@@ -670,7 +658,7 @@
                 }
             } catch (error) {
                 console.error('Registration error:', error);
-                showMessage('Error connecting to server. Make sure the backend is running.', 'error');
+                showMessage('Connection error. Please try again.', 'error');
             }
         }
 

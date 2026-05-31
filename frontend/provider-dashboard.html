@@ -43,8 +43,9 @@
         .bid-btn, .accept-btn, .complete-btn { width: 100%; background: linear-gradient(135deg, #00c8ff, #00e8a0); border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .accept-btn { background: linear-gradient(135deg, #10b981, #059669); color: white; }
         .complete-btn { background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; }
+        .edit-service-btn { background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
         .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
-        .delete-service { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        .delete-service { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
         .add-service-form { background: white; border-radius: 20px; padding: 25px; margin-top: 20px; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
         .form-input, .form-select, .form-textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; }
@@ -56,6 +57,9 @@
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         .button-group button { flex: 1; margin-top: 0; }
         .badge-completed { background: #dbeafe; color: #2563eb; padding: 4px 12px; border-radius: 20px; font-size: 12px; display: inline-block; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -64,8 +68,8 @@
         <div class="logo">Service<span>Connect</span></div>
         <div class="nav-links">
             <a href="#" class="nav-link active">📊 My Dashboard</a>
-            <a href="#" class="nav-link" onclick="window.location.href='marketplace.html'">🛒 Marketplace</a>
-            <a href="chat.html" class="nav-link" id="chatNavLink">💬 Messages <span id="unreadBadge" style="background:#ef4444; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:5px; display:none;"></span></a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+            <a href="chat.html" class="nav-link">💬 Messages</a>
         </div>
         <div class="user-info">
             <span class="user-name" id="userName">Provider</span>
@@ -86,6 +90,7 @@
             <p>• <strong>Bid on Jobs:</strong> Browse "Available Jobs" → Place a bid → If seeker accepts, job appears in "My Jobs"</p>
             <p>• <strong>Direct Hire:</strong> Customers can hire you directly from Marketplace → Requests appear in "Hire Requests" → Accept to start working</p>
             <p>• <strong>Complete Jobs:</strong> After finishing work, click "Mark Complete" to finish the job</p>
+            <p>• <strong>Manage Services:</strong> Add, edit, or delete your services in "My Services" tab</p>
         </div>
 
         <div class="tabs">
@@ -102,7 +107,7 @@
         <div id="myServices" style="display: none;">
             <div id="servicesList"></div>
             <div class="add-service-form">
-                <h3 style="margin-bottom: 15px;">Add New Service</h3>
+                <h3 style="margin-bottom: 15px;">➕ Add New Service</h3>
                 <div class="form-row">
                     <select id="serviceCategory" class="form-select"><option value="">Select Category</option></select>
                     <input type="text" id="serviceTitle" class="form-input" placeholder="Service Title">
@@ -113,10 +118,29 @@
                     <select id="servicePriceType" class="form-select"><option value="fixed">Fixed Price</option><option value="hourly">Hourly Rate</option><option value="negotiable">Negotiable</option></select>
                     <input type="number" id="serviceExperience" class="form-input" placeholder="Years Experience">
                 </div>
-                <button class="btn-primary" onclick="addService()">Add Service</button>
+                <button class="btn-primary" onclick="addService()">➕ Add Service</button>
             </div>
         </div>
         <div id="hireRequests" style="display: none;" class="cards-grid"></div>
+    </div>
+
+    <!-- Edit Service Modal -->
+    <div id="editServiceModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 20px;">✏️ Edit Your Service</h3>
+            <input type="text" id="editServiceTitle" placeholder="Service Title">
+            <textarea id="editServiceDescription" rows="3" placeholder="Service Description"></textarea>
+            <input type="number" id="editServicePrice" placeholder="Price (GHS)">
+            <select id="editServicePriceType">
+                <option value="fixed">Fixed Price</option>
+                <option value="hourly">Hourly Rate</option>
+                <option value="negotiable">Negotiable</option>
+            </select>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="btn-primary" onclick="updateService()" style="flex:1;">💾 Save Changes</button>
+                <button onclick="closeEditServiceModal()" style="flex:1; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <div id="toast" class="toast"></div>
@@ -126,6 +150,7 @@
         let token = localStorage.getItem('token');
         let user = null;
         let categories = [];
+        let currentEditServiceId = null;
 
         if (!token) window.location.href = 'index.html';
         try {
@@ -144,44 +169,29 @@
             document.getElementById('serviceCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
         }
 
-        async function loadDashboard() { await loadAvailableJobs(); await loadMyBids(); await loadMyJobs(); await loadMyServices(); await loadHireRequests(); await loadStats(); await loadUnreadCount(); }
+        async function loadDashboard() { 
+            await loadAvailableJobs(); 
+            await loadMyBids(); 
+            await loadMyJobs(); 
+            await loadMyServices(); 
+            await loadHireRequests(); 
+            await loadStats(); 
+        }
 
-        // ============ CHAT FUNCTION FOR PROVIDER ============
         async function startChatWithSeeker(seekerId, jobId = null, directHireId = null) {
             if (!seekerId) {
                 showToast('Customer ID not found', 'error');
                 return;
             }
-            
             const result = await apiCall('/api/conversations/provider', {
                 method: 'POST',
-                body: JSON.stringify({
-                    seeker_id: seekerId,
-                    job_id: jobId,
-                    direct_hire_id: directHireId
-                })
+                body: JSON.stringify({ seeker_id: seekerId, job_id: jobId, direct_hire_id: directHireId })
             });
-            
             if (result.success) {
                 window.location.href = `chat.html?conversation=${result.conversation.id}`;
             } else {
                 showToast(result.message || 'Failed to start chat', 'error');
             }
-        }
-
-        async function loadUnreadCount() {
-            try {
-                const result = await apiCall('/api/messages/unread-count');
-                if (result.success && result.unread_count > 0) {
-                    const badge = document.getElementById('unreadBadge');
-                    badge.style.display = 'inline';
-                    badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-                    document.title = `(${result.unread_count}) Service Connect`;
-                } else {
-                    document.getElementById('unreadBadge').style.display = 'none';
-                    document.title = 'Service Connect';
-                }
-            } catch(e) {}
         }
 
         // ============ AVAILABLE JOBS ============
@@ -200,7 +210,7 @@
                         <input type="number" id="bidDays_${job.id}" class="bid-input" placeholder="Est. days">
                         <div class="button-group">
                             <button class="bid-btn" onclick="placeBid(${job.id})">Place Bid</button>
-                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})" style="background:#8b5cf6;">💬 Ask Question</button>
+                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})">💬 Ask Question</button>
                         </div>
                     </div>
                 </div>
@@ -224,7 +234,7 @@
             container.innerHTML = bids.map(bid => `<div class="job-card"><span class="job-category">📄 Bid #${bid.id}</span><div class="job-title">${escapeHtml(bid.job_title)}</div><div class="job-details">Your bid: GHS ${bid.amount} | ${bid.estimated_days} days</div><div class="job-details">Status: ${bid.status === 'pending' ? '⏳ Pending' : bid.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}</div><div class="job-budget">💰 Budget: GHS ${bid.job_budget || 'Negotiable'}</div></div>`).join('');
         }
 
-        // ============ MY JOBS (with WORKING Mark Complete button) ============
+        // ============ MY JOBS ============
         async function loadMyJobs() {
             const jobs = await apiCall('/api/provider/jobs');
             const container = document.getElementById('myJobs');
@@ -232,7 +242,7 @@
             container.innerHTML = jobs.map(job => `
                 <div class="job-card">
                     <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
-                    <div class="job-title">${escapeHtml(job.job_title)}</div>
+                    <div class="job-title">${escapeHtml(job.job_title || 'Direct Hire')}</div>
                     <div class="job-details">💰 Agreed Amount: GHS ${job.agreed_amount}</div>
                     <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)}</div>
                     <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
@@ -240,57 +250,83 @@
                     ${job.status === 'completed' ? '<div class="badge-completed" style="margin-top:10px;">✅ Job Completed</div>' : ''}
                     <div class="button-group">
                         ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})" style="background:#8b5cf6;">💬 Message Customer</button>
+                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})">💬 Message Customer</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        // ============ MARK JOB AS COMPLETE - WORKING FUNCTION ============
         async function markJobComplete(jobId) {
-            // Show confirmation dialog
-            const confirmed = confirm('⚠️ Are you sure you want to mark this job as COMPLETE?\n\nOnce marked complete, you cannot undo this action.\n\nThe job will be moved to completed status.');
-            
-            if (!confirmed) {
-                showToast('Job completion cancelled', 'info');
-                return;
-            }
-            
+            if (!confirm('⚠️ Are you sure you want to mark this job as COMPLETE?')) return;
             showToast('Processing...', 'info');
-            
-            try {
-                const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { 
-                    method: 'PUT', 
-                    body: JSON.stringify({ status: 'completed' }) 
-                });
-                
-                if (result.success) {
-                    showToast('✅ Job marked as complete! Earnings will be added to your account.', 'success');
-                    // Refresh all relevant sections
-                    await loadMyJobs();
-                    await loadStats();
-                    
-                    // Also refresh available jobs and bids if needed
-                    await loadAvailableJobs();
-                    await loadMyBids();
-                    
-                    // Optional: Send notification to customer (if you have notification system)
-                    console.log(`Job ${jobId} marked as complete by provider ${user?.id}`);
-                } else {
-                    showToast(result.message || '❌ Failed to mark job as complete', 'error');
-                }
-            } catch (error) {
-                console.error('Error marking job complete:', error);
-                showToast('Network error. Please try again.', 'error');
-            }
+            const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { method: 'PUT', body: JSON.stringify({ status: 'completed' }) });
+            if (result.success) { showToast('✅ Job marked as complete!', 'success'); loadMyJobs(); loadStats(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY SERVICES ============
+        // ============ MY SERVICES (WITH WORKING EDIT & DELETE) ============
         async function loadMyServices() {
             const services = await apiCall('/api/provider/services');
             const container = document.getElementById('servicesList');
-            if (!services || services.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; return; }
-            container.innerHTML = services.map(service => `<div class="service-card" style="display:flex; justify-content:space-between; align-items:center;"><div><div class="job-title">${escapeHtml(service.title)}</div><div style="font-size:12px; color:#64748b;">${service.category_name}</div><div class="job-budget">GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div></div><button class="delete-service" onclick="deleteService(${service.id})">Delete</button></div>`).join('');
+            if (!services || services.length === 0) { 
+                container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; 
+                return; 
+            }
+            container.innerHTML = services.map(service => `
+                <div class="service-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                    <div style="flex:1;">
+                        <div class="job-title">${escapeHtml(service.title)}</div>
+                        <div style="font-size:12px; color:#64748b;">📁 ${service.category_name}</div>
+                        <div class="job-budget">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                        <div style="font-size:12px; color:#64748b; margin-top:5px;">📝 ${escapeHtml(service.description?.substring(0, 80) || 'No description')}${service.description?.length > 80 ? '...' : ''}</div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="edit-service-btn" onclick="openEditServiceModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
+                        <button class="delete-service" onclick="deleteService(${service.id})">🗑️ Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openEditServiceModal(id, title, description, price, priceType) {
+            currentEditServiceId = id;
+            document.getElementById('editServiceTitle').value = title;
+            document.getElementById('editServiceDescription').value = description;
+            document.getElementById('editServicePrice').value = price;
+            document.getElementById('editServicePriceType').value = priceType;
+            document.getElementById('editServiceModal').style.display = 'flex';
+        }
+
+        async function updateService() {
+            const title = document.getElementById('editServiceTitle').value;
+            const description = document.getElementById('editServiceDescription').value;
+            const price = document.getElementById('editServicePrice').value;
+            const price_type = document.getElementById('editServicePriceType').value;
+            
+            if (!title) {
+                showToast('Service title is required', 'error');
+                return;
+            }
+            
+            showToast('Updating service...', 'info');
+            
+            const result = await apiCall(`/api/provider/services/${currentEditServiceId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ title, description, price, price_type })
+            });
+            
+            if (result.success) {
+                showToast('✅ Service updated successfully!', 'success');
+                closeEditServiceModal();
+                loadMyServices();
+            } else {
+                showToast(result.message || 'Failed to update service', 'error');
+            }
+        }
+
+        function closeEditServiceModal() {
+            document.getElementById('editServiceModal').style.display = 'none';
+            currentEditServiceId = null;
         }
 
         async function addService() {
@@ -300,12 +336,51 @@
             const price = document.getElementById('servicePrice').value;
             const price_type = document.getElementById('servicePriceType').value;
             const experience_years = document.getElementById('serviceExperience').value;
-            if (!category_id || !title) { showToast('Category and title required', 'error'); return; }
-            const result = await apiCall('/api/provider/services', { method: 'POST', body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) });
-            if (result.success) { showToast('Service added!', 'success'); document.getElementById('serviceTitle').value = ''; document.getElementById('serviceDescription').value = ''; document.getElementById('servicePrice').value = ''; document.getElementById('serviceExperience').value = ''; loadMyServices(); }
+            
+            if (!category_id || !title) { 
+                showToast('Category and title are required', 'error'); 
+                return; 
+            }
+            
+            showToast('Adding service...', 'info');
+            
+            const result = await apiCall('/api/provider/services', { 
+                method: 'POST', 
+                body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) 
+            });
+            
+            if (result.success) { 
+                showToast('✅ Service added! It will appear in Marketplace.', 'success'); 
+                document.getElementById('serviceTitle').value = ''; 
+                document.getElementById('serviceDescription').value = ''; 
+                document.getElementById('servicePrice').value = ''; 
+                document.getElementById('serviceExperience').value = ''; 
+                loadMyServices(); 
+            } else { 
+                showToast(result.message || 'Failed to add service', 'error'); 
+            }
         }
 
-        async function deleteService(id) { if (confirm('Delete this service?')) { await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); showToast('Service deleted!', 'success'); loadMyServices(); } }
+        // WORKING DELETE FUNCTION
+        async function deleteService(id) { 
+            if (confirm('⚠️ Delete this service? It will be removed from Marketplace.')) { 
+                showToast('Deleting service...', 'info');
+                try {
+                    const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
+                    console.log('Delete response:', result);
+                    
+                    if (result.success) { 
+                        showToast('✅ Service deleted successfully!', 'success'); 
+                        loadMyServices(); 
+                    } else { 
+                        showToast(result.message || 'Failed to delete service', 'error'); 
+                    }
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showToast('Network error. Please try again.', 'error');
+                }
+            } 
+        }
 
         // ============ HIRE REQUESTS ============
         async function loadHireRequests() {
@@ -316,40 +391,30 @@
                 <div class="hire-card">
                     <span class="job-category">🔄 Pending Request</span>
                     <div class="job-title">${escapeHtml(req.service_title)}</div>
-                    <div class="job-details">Customer: ${escapeHtml(req.customer_name)} | 📞 ${req.customer_phone || 'Not provided'}</div>
+                    <div class="job-details">👤 Customer: ${escapeHtml(req.customer_name)}</div>
+                    <div class="job-details">📞 Phone: ${req.customer_phone || 'Not provided'}</div>
                     <div class="job-budget">💰 Offered: GHS ${req.agreed_amount}</div>
                     <div class="job-details">📝 "${escapeHtml(req.message || 'No message')}"</div>
                     <div class="button-group">
-                        <button class="accept-btn" style="flex:1;" onclick="respondToHire(${req.id}, 'accepted')">Accept</button>
-                        <button class="delete-service" style="flex:1;" onclick="respondToHire(${req.id}, 'rejected')">Decline</button>
-                        <button class="chat-btn" onclick="startChatWithSeeker(${req.customer_id}, null, ${req.id})" style="background:#8b5cf6;">💬 Message</button>
+                        <button class="accept-btn" onclick="respondToHire(${req.id}, 'accepted')">✅ Accept</button>
+                        <button class="delete-service" onclick="respondToHire(${req.id}, 'rejected')">❌ Decline</button>
+                        <button class="chat-btn" onclick="startChatWithSeeker(${req.customer_id}, null, ${req.id})">💬 Message</button>
                     </div>
                 </div>
             `).join('');
         }
 
         async function respondToHire(hireId, status) {
+            showToast('Processing...', 'info');
             const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
             if (result.success) { 
-                showToast(status === 'accepted' ? 'Hire request accepted! Job added to My Jobs.' : 'Hire request declined', 'success'); 
+                showToast(status === 'accepted' ? '✅ Hire request accepted! Job added to My Jobs.' : '✅ Hire request declined', 'success'); 
                 loadHireRequests(); 
                 loadMyJobs(); 
                 loadStats();
+            } else { 
+                showToast(result.message || 'Failed to respond', 'error'); 
             }
-            else { showToast('Failed to respond', 'error'); }
-            // Add to loadStats function in provider-dashboard.html
-async function loadStats() {
-    const stats = await apiCall('/api/dashboard/stats');
-    const earnings = await apiCall('/api/provider/earnings');
-    
-    document.getElementById('statsGrid').innerHTML = `
-        <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
-        <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
-        <div class="stat-card"><div class="stat-info"><h4>Total Earnings</h4><div class="stat-number">GHS ${(earnings.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
-        <div class="stat-card"><div class="stat-info"><h4>Commission Paid</h4><div class="stat-number">GHS ${(earnings.total_commission_paid || 0).toLocaleString()}</div></div><div class="stat-icon">🏦</div></div>
-        <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
-    `;
-}
         }
 
         // ============ STATS ============
@@ -382,9 +447,12 @@ async function loadStats() {
         }
         
         function logout() { localStorage.clear(); window.location.href = 'index.html'; }
-        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+        
+        function escapeHtml(str) { 
+            if (!str) return ''; 
+            return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
+        }
 
-        setInterval(loadUnreadCount, 10000);
         loadCategories(); 
         loadDashboard();
     </script>

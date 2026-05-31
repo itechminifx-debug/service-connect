@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup Users</title>
+    <style>
+        body { font-family: Arial; padding: 50px; max-width: 600px; margin: 0 auto; }
+        .success { color: green; }
+        .error { color: red; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 User Setup Tool</h1>
+    <div id="results"></div>
+    
+    <button onclick="createUsers()">Create Test Users</button>
+    
+    <script>
+        const API_URL = '';
+        
+        async function createUsers() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = 'Creating users...<br>';
+            
+            const users = [
+                { email: 'admin@serviceconnect.com', password: 'admin123', full_name: 'System Admin', user_type: 'admin' },
+                { email: 'seeker@test.com', password: 'password123', full_name: 'Test Seeker', user_type: 'seeker' },
+                { email: 'provider@test.com', password: 'password123', full_name: 'Test Provider', user_type: 'provider' }
+            ];
+            
+            for (const user of users) {
+                try {
+                    const response = await fetch(API_URL + '/api/auth/create-test-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(user)
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        resultsDiv.innerHTML += `<span class="success">✅ ${user.email} created with password: ${user.password}</span><br>`;
+                    } else {
+                        resultsDiv.innerHTML += `<span class="error">❌ ${user.email}: ${data.error}</span><br>`;
+                    }
+                } catch (error) {
+                    resultsDiv.innerHTML += `<span class="error">❌ ${user.email}: Connection error</span><br>`;
+                }
+            }
+            
+            resultsDiv.innerHTML += `<br><strong>Now try logging in with these credentials!</strong>`;
+        }
+    </script>
+</body>
+</html>

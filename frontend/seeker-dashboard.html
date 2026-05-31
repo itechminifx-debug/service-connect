@@ -41,7 +41,6 @@
         .bid-amount { font-weight: 700; color: #10b981; font-size: 18px; margin-bottom: 10px; }
         .bid-provider { font-weight: 600; margin-bottom: 5px; }
         .accept-btn { background: #10b981; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
-        .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         .post-job-form { background: white; border-radius: 20px; padding: 25px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .form-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 15px; }
@@ -52,8 +51,6 @@
         .badge-completed { background: #dbeafe; color: #2563eb; padding: 4px 8px; border-radius: 12px; font-size: 11px; }
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
-        .button-group { display: flex; gap: 10px; margin-top: 10px; }
-        .button-group button { flex: 1; margin-top: 0; }
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -63,7 +60,7 @@
         <div class="nav-links">
             <a href="#" class="nav-link active">📋 My Dashboard</a>
             <a href="#" class="nav-link" onclick="window.location.href='marketplace.html'">🛒 Marketplace</a>
-            <a href="chat.html" class="nav-link" id="chatNavLink">💬 Messages <span id="unreadBadge" style="background:#ef4444; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:5px; display:none;"></span></a>
+            <a href="chat.html" class="nav-link">💬 Messages</a>
         </div>
         <div class="user-info">
             <span class="user-name" id="userName">Customer</span>
@@ -79,7 +76,6 @@
 
         <div class="stats-grid" id="statsGrid"></div>
 
-        <!-- Post a Job Form -->
         <div class="post-job-form">
             <div class="form-title">📝 Post a New Job</div>
             <div class="form-row">
@@ -95,20 +91,14 @@
             <button class="btn-primary" onclick="postJob()">Post Job →</button>
         </div>
 
-        <!-- Tabs -->
         <div class="tabs">
             <button class="tab active" onclick="showTab('postedJobs')">📋 My Posted Jobs</button>
             <button class="tab" onclick="showTab('directHires')">🔄 Direct Hires</button>
             <button class="tab" onclick="showTab('bids')">📩 Received Bids</button>
         </div>
 
-        <!-- My Posted Jobs Tab -->
         <div id="postedJobs" class="cards-grid"></div>
-
-        <!-- Direct Hires Tab -->
         <div id="directHires" style="display: none;" class="cards-grid"></div>
-
-        <!-- Received Bids Tab -->
         <div id="bids" style="display: none;" class="cards-grid"></div>
     </div>
 
@@ -137,59 +127,23 @@
             document.getElementById('jobCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
         }
 
-        async function loadDashboard() { await loadPostedJobs(); await loadDirectHires(); await loadBids(); await loadStats(); await loadUnreadCount(); }
-
-        // ============ CHAT FUNCTION FOR SEEKER ============
-        async function startChatWithProvider(providerId, jobId = null, directHireId = null) {
-            if (!providerId) {
-                showToast('Provider ID not found', 'error');
-                return;
-            }
-            
-            const result = await apiCall('/api/conversations', {
-                method: 'POST',
-                body: JSON.stringify({
-                    provider_id: providerId,
-                    job_id: jobId,
-                    direct_hire_id: directHireId
-                })
-            });
-            
-            if (result.success) {
-                window.location.href = `chat.html?conversation=${result.conversation.id}`;
-            } else {
-                showToast(result.message || 'Failed to start chat', 'error');
-            }
+        async function loadDashboard() { 
+            await loadPostedJobs(); 
+            await loadDirectHires(); 
+            await loadBids(); 
+            await loadStats(); 
         }
 
-        async function loadUnreadCount() {
-            try {
-                const result = await apiCall('/api/messages/unread-count');
-                if (result.success && result.unread_count > 0) {
-                    const badge = document.getElementById('unreadBadge');
-                    badge.style.display = 'inline';
-                    badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-                } else {
-                    document.getElementById('unreadBadge').style.display = 'none';
-                }
-            } catch(e) {}
-        }
-
-        // ============ POST A JOB ============
         async function postJob() {
             const category_id = document.getElementById('jobCategory').value;
             const title = document.getElementById('jobTitle').value;
             const description = document.getElementById('jobDescription').value;
             if (!category_id || !title || !description) { showToast('Fill category, title, and description', 'error'); return; }
             const result = await apiCall('/api/jobs', { method: 'POST', body: JSON.stringify({ category_id, title, description, budget: document.getElementById('jobBudget').value, location: document.getElementById('jobLocation').value, preferred_date: document.getElementById('jobDate').value }) });
-            if (result.success) {
-                showToast('Job posted!', 'success');
-                document.getElementById('jobTitle').value = ''; document.getElementById('jobDescription').value = ''; document.getElementById('jobBudget').value = ''; document.getElementById('jobLocation').value = ''; document.getElementById('jobDate').value = '';
-                loadPostedJobs(); loadStats();
-            } else { showToast(result.message || 'Failed', 'error'); }
+            if (result.success) { showToast('Job posted!', 'success'); document.getElementById('jobTitle').value = ''; document.getElementById('jobDescription').value = ''; document.getElementById('jobBudget').value = ''; document.getElementById('jobLocation').value = ''; document.getElementById('jobDate').value = ''; loadPostedJobs(); loadStats(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY POSTED JOBS ============
         async function loadPostedJobs() {
             const jobs = await apiCall('/api/jobs/my');
             const container = document.getElementById('postedJobs');
@@ -202,15 +156,11 @@
                     <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
                     <div class="job-details">📍 ${job.location || 'Location not specified'} | 👁️ ${job.views || 0} views</div>
                     <div class="job-details">Status: ${job.status === 'open' ? '<span class="badge-pending">🟢 Open</span>' : job.status === 'assigned' ? '<span class="badge-accepted">🟡 Assigned</span>' : '<span class="badge-completed">🔵 Completed</span>'}</div>
-                    <div class="button-group">
-                        ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">📩 Bids</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithProvider(null, ${job.id})" style="background:#8b5cf6;">💬 Messages</button>
-                    </div>
+                    ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">View Bids (${job.bid_count || 0})</button>` : ''}
                 </div>
             `).join('');
         }
 
-        // ============ DIRECT HIRES ============
         async function loadDirectHires() {
             const hires = await apiCall('/api/seeker/direct-hires');
             const container = document.getElementById('directHires');
@@ -224,18 +174,16 @@
                     <div class="job-details">📝 "${escapeHtml(hire.message || 'No message')}"</div>
                     <div class="job-details">Status: ${hire.status === 'pending' ? '<span class="badge-pending">⏳ Pending Provider Response</span>' : hire.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted - In Progress</span>' : '<span class="badge-completed">❌ Declined</span>'}</div>
                     <div class="job-details">📅 Hired on: ${new Date(hire.created_at).toLocaleDateString()}</div>
-                    <button class="chat-btn" onclick="startChatWithProvider(${hire.provider_id}, null, ${hire.id})" style="background:#8b5cf6;">💬 Message Provider</button>
                 </div>
             `).join('');
         }
 
-        // ============ RECEIVED BIDS ============
         async function loadBids() {
             const myJobs = await apiCall('/api/jobs/my');
             let allBids = [];
             for (const job of myJobs) {
                 const bids = await apiCall(`/api/jobs/${job.id}/bids`);
-                if (bids && bids.length > 0) allBids.push(...bids.map(bid => ({ ...bid, job_title: job.title, job_id: job.id, job_budget: job.budget, job_seeker_id: job.seeker_id })));
+                if (bids && bids.length > 0) allBids.push(...bids.map(bid => ({ ...bid, job_title: job.title, job_id: job.id, job_budget: job.budget })));
             }
             const container = document.getElementById('bids');
             if (allBids.length === 0) { container.innerHTML = '<div class="empty-state">📩 No bids received yet. Post a job to receive bids from providers!</div>'; return; }
@@ -247,10 +195,7 @@
                     <div class="bid-amount">💰 Bid: GHS ${bid.amount}</div>
                     <div class="job-details">⏱️ ${bid.estimated_days} day(s) | 📝 "${escapeHtml(bid.message || 'No message')}"</div>
                     <div class="job-details">Your Budget: GHS ${bid.job_budget || 'Negotiable'}</div>
-                    <div class="button-group">
-                        ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">✅ Accept</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
-                        <button class="chat-btn" onclick="startChatWithProvider(${bid.provider_id}, ${bid.job_id})" style="background:#8b5cf6;">💬 Chat</button>
-                    </div>
+                    ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">Accept Bid (GHS ${bid.amount})</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
                 </div>
             `).join('');
         }
@@ -280,7 +225,16 @@
             return icons[name] || '🔧';
         }
 
-        function viewBids(jobId) { showTab('bids'); showToast(`Viewing bids for job #${jobId}`, 'info'); }
+        function viewBids(jobId) { 
+            // Switch to bids tab
+            document.getElementById('postedJobs').style.display = 'none';
+            document.getElementById('directHires').style.display = 'none';
+            document.getElementById('bids').style.display = 'grid';
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab')[2].classList.add('active');
+            loadBids();
+            showToast(`Viewing bids for job #${jobId}`, 'info'); 
+        }
         
         function showTab(tab) {
             document.getElementById('postedJobs').style.display = tab === 'postedJobs' ? 'grid' : 'none';
@@ -292,72 +246,23 @@
             if (tab === 'directHires') loadDirectHires();
         }
 
-        function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
-        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
-        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
-
-        setInterval(loadUnreadCount, 10000);
-        loadCategories(); loadDashboard();
-
-
-
-// ============ NOTIFICATION SYSTEM ============
-
-// Load unread message count and show badge
-async function loadUnreadCount() {
-    try {
-        const result = await apiCall('/api/messages/unread-count');
-        console.log('Unread count response:', result); // Debug log
+        function showToast(msg, type) { 
+            const t = document.getElementById('toast'); 
+            t.textContent = msg; 
+            t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; 
+            t.style.display = 'block'; 
+            setTimeout(() => t.style.display = 'none', 3000); 
+        }
         
-        if (result.success && result.unread_count > 0) {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) {
-                badge.style.display = 'inline';
-                badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-            }
-            
-            // Update browser tab title
-            document.title = `(${result.unread_count}) Service Connect`;
-            
-            // Optional: Show browser notification
-            if (Notification.permission === 'granted' && result.unread_count > 0) {
-                // Only notify once per session
-                if (!window.hasNotified && result.unread_count > 0) {
-                    new Notification('New Message!', {
-                        body: `You have ${result.unread_count} unread message(s)`,
-                        icon: '/favicon.ico'
-                    });
-                    window.hasNotified = true;
-                    setTimeout(() => { window.hasNotified = false; }, 30000);
-                }
-            }
-        } else {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) badge.style.display = 'none';
-            document.title = 'Service Connect';
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+        
+        function escapeHtml(str) { 
+            if (!str) return ''; 
+            return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
         }
-    } catch (error) {
-        console.error('Error loading unread count:', error);
-    }
-}
 
-// Request notification permission
-async function requestNotificationPermission() {
-    if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            console.log('✅ Notifications enabled');
-        }
-    }
-}
-
-// Call these when page loads
-requestNotificationPermission();
-loadUnreadCount();
-
-// Check for new messages every 5 seconds
-setInterval(loadUnreadCount, 5000);
-
+        loadCategories(); 
+        loadDashboard();
     </script>
 </body>
 </html>
