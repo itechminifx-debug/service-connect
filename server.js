@@ -117,7 +117,7 @@ async function createTables() {
                 id SERIAL PRIMARY KEY,
                 customer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                 provider_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                service_id INTEGER REFERENCES provider_services(id),
+                service_id INTEGER REFERENCES provider_services(id) ON DELETE SET NULL,
                 agreed_amount DECIMAL(10,2) NOT NULL,
                 message TEXT,
                 status VARCHAR(50) DEFAULT 'pending',
@@ -128,11 +128,11 @@ async function createTables() {
         await client.query(`
             CREATE TABLE IF NOT EXISTS accepted_jobs (
                 id SERIAL PRIMARY KEY,
-                job_post_id INTEGER REFERENCES job_posts(id),
+                job_post_id INTEGER REFERENCES job_posts(id) ON DELETE SET NULL,
                 provider_id INTEGER REFERENCES users(id),
                 seeker_id INTEGER REFERENCES users(id),
-                bid_id INTEGER REFERENCES bids(id),
-                service_id INTEGER REFERENCES provider_services(id),
+                bid_id INTEGER REFERENCES bids(id) ON DELETE SET NULL,
+                service_id INTEGER REFERENCES provider_services(id) ON DELETE SET NULL,
                 agreed_amount DECIMAL(10,2),
                 platform_commission DECIMAL(10,2) DEFAULT 0,
                 provider_earnings DECIMAL(10,2) DEFAULT 0,
@@ -146,7 +146,7 @@ async function createTables() {
         await client.query(`
             CREATE TABLE IF NOT EXISTS commission_transactions (
                 id SERIAL PRIMARY KEY,
-                job_id INTEGER REFERENCES accepted_jobs(id),
+                job_id INTEGER REFERENCES accepted_jobs(id) ON DELETE SET NULL,
                 amount DECIMAL(10,2) NOT NULL,
                 commission_rate DECIMAL(5,2) DEFAULT 10,
                 platform_earnings DECIMAL(10,2) NOT NULL,
@@ -563,9 +563,9 @@ app.put('/api/provider/jobs/:jobId/status', authenticateToken, async (req, res) 
     }
 });
 
-// ==================== PROVIDER SERVICES (COMPLETE CRUD) ====================
+// ==================== PROVIDER SERVICES (COMPLETE CRUD WITH SOFT DELETE) ====================
 
-// GET all services
+// GET all services (only active ones)
 app.get('/api/provider/services', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') return res.status(403).json([]);
     
@@ -617,7 +617,7 @@ app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
     
     try {
         const verifyResult = await pool.query(
-            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
+            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2 AND is_active = true',
             [id, req.user.id]
         );
         
@@ -643,7 +643,7 @@ app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// DELETE service (FIXED)
+// DELETE service (SOFT DELETE - FIXED)
 app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
         return res.status(403).json({ success: false, message: 'Only providers can delete services' });
@@ -656,31 +656,26 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
     try {
         // Check if service exists and belongs to this provider
         const checkResult = await pool.query(
-            'SELECT id, provider_id, title FROM provider_services WHERE id = $1',
-            [id]
+            'SELECT id, title FROM provider_services WHERE id = $1 AND provider_id = $2 AND is_active = true',
+            [id, req.user.id]
         );
         
         if (checkResult.rows.length === 0) {
-            console.log(`❌ Service ${id} not found`);
-            return res.status(404).json({ success: false, message: 'Service not found' });
+            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
         }
         
-        const service = checkResult.rows[0];
+        // SOFT DELETE - Just mark as inactive
+        await pool.query(
+            'UPDATE provider_services SET is_active = false WHERE id = $1 AND provider_id = $2',
+            [id, req.user.id]
+        );
         
-        if (service.provider_id !== req.user.id) {
-            console.log(`❌ Service ${id} belongs to provider ${service.provider_id}, not ${req.user.id}`);
-            return res.status(403).json({ success: false, message: 'You can only delete your own services' });
-        }
-        
-        // Delete the service
-        await pool.query('DELETE FROM provider_services WHERE id = $1', [id]);
-        
-        console.log(`✅ Service "${service.title}" (ID: ${id}) deleted by provider ${req.user.id}`);
+        console.log(`✅ Service "${checkResult.rows[0].title}" (ID: ${id}) marked as inactive`);
         
         res.json({ success: true, message: 'Service deleted successfully' });
     } catch (error) {
         console.error('Delete service error:', error);
-        res.status(500).json({ success: false, error: error.message, message: 'Database error' });
+        res.status(500).json({ success: false, error: error.message, message: 'Database error: ' + error.message });
     }
 });
 
