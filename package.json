@@ -1,8 +1,8 @@
 {
   "name": "service-connect-platform",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Service Connection Platform with Chat and Email",
+  "main": "server.js",
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js"
@@ -12,18 +12,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.5.2",
-    "helmet": "^8.2.0",
-    "hpp": "^0.2.3",
-    "jsonwebtoken": "^9.0.3",
-    "pg": "^8.21.0"
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.7",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemailer": "^6.9.7",
+    "nodemon": "^3.0.1"
   }
 }
-
