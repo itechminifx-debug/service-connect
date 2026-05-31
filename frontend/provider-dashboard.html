@@ -140,7 +140,7 @@
                 <option value="negotiable">Negotiable</option>
             </select>
             <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button class="btn-primary" onclick="updateService()" style="flex:1;">Save Changes</button>
+                <button class="btn-primary" onclick="updateService()" style="flex:1;">💾 Save Changes</button>
                 <button onclick="closeEditServiceModal()" style="flex:1; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
             </div>
         </div>
@@ -267,7 +267,7 @@
             else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY SERVICES (WITH EDIT BUTTON) ============
+        // ============ MY SERVICES (WITH WORKING EDIT/DELETE) ============
         async function loadMyServices() {
             const services = await apiCall('/api/provider/services');
             const container = document.getElementById('servicesList');
@@ -279,9 +279,9 @@
                 <div class="service-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
                     <div style="flex:1;">
                         <div class="job-title">${escapeHtml(service.title)}</div>
-                        <div style="font-size:12px; color:#64748b;">${service.category_name}</div>
+                        <div style="font-size:12px; color:#64748b;">📁 ${service.category_name}</div>
                         <div class="job-budget">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                        <div style="font-size:12px; color:#64748b; margin-top:5px;">${escapeHtml(service.description?.substring(0, 80) || '')}${service.description?.length > 80 ? '...' : ''}</div>
+                        <div style="font-size:12px; color:#64748b; margin-top:5px;">📝 ${escapeHtml(service.description?.substring(0, 80) || 'No description')}${service.description?.length > 80 ? '...' : ''}</div>
                     </div>
                     <div style="display: flex; gap: 8px;">
                         <button class="edit-service-btn" onclick="openEditServiceModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
@@ -311,6 +311,8 @@
                 return;
             }
             
+            showToast('Updating service...', 'info');
+            
             const result = await apiCall(`/api/provider/services/${currentEditServiceId}`, {
                 method: 'PUT',
                 body: JSON.stringify({ title, description, price, price_type })
@@ -320,8 +322,9 @@
                 showToast('✅ Service updated successfully!', 'success');
                 closeEditServiceModal();
                 loadMyServices();
+                // Also refresh marketplace if needed
             } else {
-                showToast(result.message || 'Failed to update', 'error');
+                showToast(result.message || 'Failed to update service', 'error');
             }
         }
 
@@ -337,8 +340,19 @@
             const price = document.getElementById('servicePrice').value;
             const price_type = document.getElementById('servicePriceType').value;
             const experience_years = document.getElementById('serviceExperience').value;
-            if (!category_id || !title) { showToast('Category and title required', 'error'); return; }
-            const result = await apiCall('/api/provider/services', { method: 'POST', body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) });
+            
+            if (!category_id || !title) { 
+                showToast('Category and title are required', 'error'); 
+                return; 
+            }
+            
+            showToast('Adding service...', 'info');
+            
+            const result = await apiCall('/api/provider/services', { 
+                method: 'POST', 
+                body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) 
+            });
+            
             if (result.success) { 
                 showToast('✅ Service added! It will appear in Marketplace.', 'success'); 
                 document.getElementById('serviceTitle').value = ''; 
@@ -347,18 +361,19 @@
                 document.getElementById('serviceExperience').value = ''; 
                 loadMyServices(); 
             } else { 
-                showToast(result.message || 'Failed', 'error'); 
+                showToast(result.message || 'Failed to add service', 'error'); 
             }
         }
 
         async function deleteService(id) { 
-            if (confirm('Delete this service? It will be removed from Marketplace.')) { 
+            if (confirm('⚠️ Delete this service? It will be removed from Marketplace.')) { 
+                showToast('Deleting service...', 'info');
                 const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
                 if (result.success) { 
-                    showToast('✅ Service deleted!', 'success'); 
+                    showToast('✅ Service deleted successfully!', 'success'); 
                     loadMyServices(); 
                 } else { 
-                    showToast('Failed to delete', 'error'); 
+                    showToast(result.message || 'Failed to delete service', 'error'); 
                 }
             } 
         }
@@ -372,7 +387,7 @@
                 <div class="hire-card">
                     <span class="job-category">🔄 Pending Request</span>
                     <div class="job-title">${escapeHtml(req.service_title)}</div>
-                    <div class="job-details">Customer: ${escapeHtml(req.customer_name)}</div>
+                    <div class="job-details">👤 Customer: ${escapeHtml(req.customer_name)}</div>
                     <div class="job-details">📞 Phone: ${req.customer_phone || 'Not provided'}</div>
                     <div class="job-budget">💰 Offered: GHS ${req.agreed_amount}</div>
                     <div class="job-details">📝 "${escapeHtml(req.message || 'No message')}"</div>
