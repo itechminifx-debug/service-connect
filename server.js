@@ -8,7 +8,7 @@ const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // Simple email logger (temporary - emails will log to console)
 // To enable real emails, install nodemailer and add email credentials to .env
