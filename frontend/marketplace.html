@@ -28,8 +28,6 @@
         .provider-name { font-size: 14px; color: #64748b; margin-bottom: 10px; }
         .service-price { font-weight: 700; color: #f59e0b; font-size: 20px; margin: 10px 0; }
         .hire-btn { width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
-        .edit-service-btn { width: 100%; background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
-        .delete-service-btn { width: 100%; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
@@ -58,7 +56,7 @@
     <div class="container">
         <!-- Provider Info Banner -->
         <div id="providerBanner" class="info-banner" style="display: none;">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. You can see your own services here. Customers (Seekers) can see and hire your services.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. Your services are displayed below. To edit or delete services, go to your Dashboard → My Services.
         </div>
         
         <!-- Seeker Info Banner -->
@@ -75,25 +73,6 @@
         </div>
         
         <div id="servicesGrid" class="services-grid"><div class="empty-state">Loading services...</div></div>
-    </div>
-
-    <!-- Edit Service Modal -->
-    <div id="editServiceModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom:20px;">✏️ Edit Your Service</h3>
-            <input type="text" id="editServiceTitle" placeholder="Service Title">
-            <textarea id="editServiceDescription" rows="3" placeholder="Service Description"></textarea>
-            <input type="number" id="editServicePrice" placeholder="Price (GHS)">
-            <select id="editServicePriceType">
-                <option value="fixed">Fixed Price</option>
-                <option value="hourly">Hourly Rate</option>
-                <option value="negotiable">Negotiable</option>
-            </select>
-            <div style="display:flex; gap:10px; margin-top:10px;">
-                <button class="hire-btn" onclick="updateService()" style="background:#f59e0b;">Save Changes</button>
-                <button onclick="closeEditModal()" style="flex:1; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
-            </div>
-        </div>
     </div>
 
     <!-- Hire Modal (Only for Seekers) -->
@@ -114,7 +93,6 @@
         let token = localStorage.getItem('token');
         let user = null;
         let selectedService = null;
-        let currentEditServiceId = null;
         
         if (!token) window.location.href = 'index.html';
         
@@ -180,85 +158,34 @@
                 return;
             }
             
-            container.innerHTML = displayServices.map(service => {
-                const isMyService = user?.user_type === 'provider' && service.provider_id === user.id;
-                
-                if (isMyService) {
-                    // Provider view - can edit/delete their own services
-                    return `
-                        <div class="service-card" style="border: 2px solid #8b5cf6;">
-                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                            <span class="my-service-badge"><i class="fas fa-user-check"></i> Your Service</span>
-                            <div class="service-title">${escapeHtml(service.title)}</div>
-                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                            <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
-                            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                                <button class="edit-service-btn" onclick="openEditModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
-                                <button class="delete-service-btn" onclick="deleteMyService(${service.id})">🗑️ Delete</button>
-                            </div>
+            if (user?.user_type === 'provider') {
+                // PROVIDER VIEW - Read only, no edit/delete buttons
+                container.innerHTML = displayServices.map(service => `
+                    <div class="service-card" style="border: 2px solid #8b5cf6;">
+                        <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                        <span class="my-service-badge"><i class="fas fa-user-check"></i> Your Service</span>
+                        <div class="service-title">${escapeHtml(service.title)}</div>
+                        <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                        <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0; text-align: center; color: #8b5cf6; font-size: 12px;">
+                            <i class="fas fa-info-circle"></i> To edit or delete this service, go to Dashboard → My Services
                         </div>
-                    `;
-                } else {
-                    // Seeker view - can hire
-                    return `
-                        <div class="service-card">
-                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                            <div class="service-title">${escapeHtml(service.title)}</div>
-                            <div class="provider-name"><i class="fas fa-user"></i> ${escapeHtml(service.provider_name)}</div>
-                            <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
-                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                            <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
-                            <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
-                        </div>
-                    `;
-                }
-            }).join('');
-        }
-        
-        function openEditModal(id, title, description, price, priceType) {
-            currentEditServiceId = id;
-            document.getElementById('editServiceTitle').value = title;
-            document.getElementById('editServiceDescription').value = description;
-            document.getElementById('editServicePrice').value = price;
-            document.getElementById('editServicePriceType').value = priceType;
-            document.getElementById('editServiceModal').style.display = 'flex';
-        }
-        
-        async function updateService() {
-            const title = document.getElementById('editServiceTitle').value;
-            const description = document.getElementById('editServiceDescription').value;
-            const price = document.getElementById('editServicePrice').value;
-            const price_type = document.getElementById('editServicePriceType').value;
-            
-            const result = await apiCall(`/api/provider/services/${currentEditServiceId}`, {
-                method: 'PUT',
-                body: JSON.stringify({ title, description, price, price_type })
-            });
-            
-            if (result.success) {
-                showToast('Service updated successfully!', 'success');
-                closeEditModal();
-                loadServices();
+                    </div>
+                `).join('');
             } else {
-                showToast(result.message || 'Failed to update', 'error');
+                // SEEKER VIEW - Can hire
+                container.innerHTML = displayServices.map(service => `
+                    <div class="service-card">
+                        <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                        <div class="service-title">${escapeHtml(service.title)}</div>
+                        <div class="provider-name"><i class="fas fa-user"></i> ${escapeHtml(service.provider_name)}</div>
+                        <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
+                        <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                        <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                        <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
+                    </div>
+                `).join('');
             }
-        }
-        
-        async function deleteMyService(serviceId) {
-            if (confirm('Are you sure you want to delete this service?')) {
-                const result = await apiCall(`/api/provider/services/${serviceId}`, { method: 'DELETE' });
-                if (result.success) {
-                    showToast('Service deleted successfully!', 'success');
-                    loadServices();
-                } else {
-                    showToast('Failed to delete service', 'error');
-                }
-            }
-        }
-        
-        function closeEditModal() {
-            document.getElementById('editServiceModal').style.display = 'none';
-            currentEditServiceId = null;
         }
         
         function openHireModal(serviceId, providerId, serviceTitle) {
