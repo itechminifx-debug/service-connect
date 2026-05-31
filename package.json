@@ -1,11 +1,11 @@
-{
+{{
   "name": "service-connect-platform",
   "version": "1.0.0",
   "description": "Service Connection Platform with Chat and Email",
   "main": "server.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "nodemon backend/server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +21,6 @@
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "nodemailer": "^6.9.7",
     "nodemon": "^3.0.1"
   }
 }
