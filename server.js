@@ -1068,42 +1068,53 @@ app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
     }
 });
 
-// Get commission earnings (admin only)
-app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
+// ==================== ADMIN ENDPOINTS (ALL FIXED) ====================
+
+// Get all users
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
     }
-    
     try {
-        const totalResult = await pool.query(`
-            SELECT COALESCE(SUM(platform_commission), 0) as total_earnings 
-            FROM accepted_jobs 
-            WHERE status = 'completed'
-        `);
-        
-        const recentResult = await pool.query(`
-            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
-                   aj.completed_at, aj.status,
-                   p.full_name as provider_name, 
-                   s.full_name as seeker_name,
-                   COALESCE(jp.title, ps.title, 'Direct Hire') as job_title
-            FROM accepted_jobs aj
-            JOIN users p ON aj.provider_id = p.id
-            JOIN users s ON aj.seeker_id = s.id
-            LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-            LEFT JOIN provider_services ps ON aj.service_id = ps.id
-            WHERE aj.status = 'completed'
-            ORDER BY aj.completed_at DESC
-            LIMIT 20
-        `);
-        
-        res.json({
-            success: true,
-            total_earnings: parseFloat(totalResult.rows[0].total_earnings) || 0,
-            recent_transactions: recentResult.rows || []
-        });
+        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, created_at FROM users ORDER BY created_at DESC`);
+        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
+        const providers = result.rows.filter(u => u.user_type === 'provider').length;
+        res.json({ success: true, users: result.rows, total: result.rows.length, seekers, providers });
     } catch (error) {
-        console.error('Error getting earnings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all jobs
+app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT jp.*, u.full_name as seeker_name, (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count FROM job_posts jp LEFT JOIN users u ON jp.seeker_id = u.id ORDER BY jp.created_at DESC LIMIT 100`);
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get jobs stats
+app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'open' THEN 1 END) as open, COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed FROM job_posts`);
+        res.json({ success: true, total: parseInt(result.rows[0].total) || 0, open: parseInt(result.rows[0].open) || 0, assigned: parseInt(result.rows[0].assigned) || 0, completed: parseInt(result.rows[0].completed) || 0 });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get earnings (potential)
+app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const totalResult = await pool.query(`SELECT COALESCE(SUM(agreed_amount), 0) as total_value, COALESCE(SUM(platform_commission), 0) as total_commission, COUNT(*) as completed_count FROM accepted_jobs WHERE status = 'completed'`);
+        const recentResult = await pool.query(`SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.completed_at, COALESCE(p.full_name, 'Unknown') as provider_name, COALESCE(s.full_name, 'Unknown') as seeker_name, COALESCE(jp.title, ps.title, 'Direct Hire') as job_title FROM accepted_jobs aj LEFT JOIN users p ON aj.provider_id = p.id LEFT JOIN users s ON aj.seeker_id = s.id LEFT JOIN job_posts jp ON aj.job_post_id = jp.id LEFT JOIN provider_services ps ON aj.service_id = ps.id WHERE aj.status = 'completed' ORDER BY aj.completed_at DESC LIMIT 50`);
+        res.json({ success: true, total_transaction_value: parseFloat(totalResult.rows[0].total_value) || 0, total_potential_commission: parseFloat(totalResult.rows[0].total_commission) || 0, completed_jobs: parseInt(totalResult.rows[0].completed_count) || 0, recent_transactions: recentResult.rows || [] });
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1119,49 +1130,26 @@ app.get('/api/commission/rate', authenticateToken, async (req, res) => {
     }
 });
 
-// Get earnings data (potential earnings - no actual payment)
-app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
+// Update commission rate
+app.put('/api/commission/rate', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { rate } = req.body;
+    if (!rate || rate < 0 || rate > 100) return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
     try {
-        // Get total transaction value from completed jobs
-        const totalResult = await pool.query(`
-            SELECT 
-                COALESCE(SUM(agreed_amount), 0) as total_value,
-                COALESCE(SUM(platform_commission), 0) as total_commission,
-                COUNT(*) as completed_count
-            FROM accepted_jobs 
-            WHERE status = 'completed'
-        `);
-        
-        // Get recent transactions
-        const recentResult = await pool.query(`
-            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
-                   aj.completed_at, aj.status,
-                   p.full_name as provider_name, 
-                   s.full_name as seeker_name,
-                   COALESCE(jp.title, ps.title, 'Direct Hire') as job_title
-            FROM accepted_jobs aj
-            JOIN users p ON aj.provider_id = p.id
-            JOIN users s ON aj.seeker_id = s.id
-            LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
-            LEFT JOIN provider_services ps ON aj.service_id = ps.id
-            WHERE aj.status = 'completed'
-            ORDER BY aj.completed_at DESC
-            LIMIT 50
-        `);
-        
-        res.json({
-            success: true,
-            total_transaction_value: parseFloat(totalResult.rows[0].total_value) || 0,
-            total_potential_commission: parseFloat(totalResult.rows[0].total_commission) || 0,
-            completed_jobs: parseInt(totalResult.rows[0].completed_count) || 0,
-            recent_transactions: recentResult.rows || []
-        });
+        await pool.query(`INSERT INTO admin_settings (setting_key, setting_value, updated_at) VALUES ('commission_rate', $1, CURRENT_TIMESTAMP) ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`, [rate]);
+        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
     } catch (error) {
-        console.error('Error getting earnings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get provider services
+app.get('/api/admin/services', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    try {
+        const result = await pool.query(`SELECT ps.*, u.full_name as provider_name, c.name as category_name FROM provider_services ps LEFT JOIN users u ON ps.provider_id = u.id LEFT JOIN categories c ON ps.category_id = c.id WHERE ps.is_active = true ORDER BY ps.created_at DESC LIMIT 100`);
+        res.json({ success: true, services: result.rows });
+    } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
