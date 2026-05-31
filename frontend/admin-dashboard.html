@@ -41,7 +41,6 @@
         .badge-open { background: #3b82f6; color: white; }
         .badge-assigned { background: #f59e0b; color: white; }
         .badge-completed { background: #10b981; color: white; }
-        .badge-pending { background: #8b5cf6; color: white; }
         
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         
@@ -49,16 +48,12 @@
         .tab-btn { background: none; border: none; color: rgba(255,255,255,0.7); padding: 10px 20px; cursor: pointer; font-size: 14px; transition: all 0.3s; border-radius: 8px; }
         .tab-btn.active { background: rgba(0,232,160,0.2); color: #00e8a0; }
         
-        .loading { text-align: center; padding: 40px; }
-        .refresh-btn { background: rgba(255,255,255,0.1); border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-left: 10px; }
-        .refresh-btn:hover { background: rgba(255,255,255,0.2); }
-        
         .status-filter { margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-        .status-filter select { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; }
-        .status-filter input { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; width: 200px; }
+        .status-filter select, .status-filter input { padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; }
+        .status-filter input { width: 200px; }
         .status-filter input::placeholder { color: rgba(255,255,255,0.5); }
         
-        @media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } table { font-size: 12px; } th, td { padding: 8px; } .tabs { justify-content: center; } }
+        @media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } table { font-size: 12px; } th, td { padding: 8px; } }
     </style>
 </head>
 <body>
@@ -72,16 +67,13 @@
     </nav>
 
     <div class="container">
-        <h1 style="margin-bottom: 30px;">
-            <i class="fas fa-chart-line"></i> Admin Dashboard 
-            <button class="refresh-btn" onclick="refreshAll()"><i class="fas fa-sync-alt"></i> Refresh All</button>
-        </h1>
+        <h1 style="margin-bottom: 30px;"><i class="fas fa-chart-line"></i> Admin Dashboard</h1>
         
         <!-- Stats Grid -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Total Platform Earnings</h3><div class="value" id="totalEarnings">GHS 0</div><div class="small">Lifetime commission collected</div></div>
             <div class="stat-card"><h3><i class="fas fa-users"></i> Total Users</h3><div class="value" id="totalUsers">0</div><div class="small" id="userBreakdown">Seekers: 0 | Providers: 0</div></div>
-            <div class="stat-card"><h3><i class="fas fa-briefcase"></i> Total Jobs</h3><div class="value" id="totalJobsCount">0</div><div class="small" id="jobsBreakdown">Open: 0 | Assigned: 0 | Completed: 0</div></div>
+            <div class="stat-card"><h3><i class="fas fa-briefcase"></i> Open Jobs</h3><div class="value" id="openJobs">0</div><div class="small">Jobs available for providers</div></div>
             <div class="stat-card"><h3><i class="fas fa-percent"></i> Commission Rate</h3><div class="value" id="currentRate">10%</div><div class="small">Applied to all transactions</div></div>
         </div>
         
@@ -97,72 +89,37 @@
         
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab-btn active" onclick="showTab('transactions')">💰 Recent Transactions</button>
-            <button class="tab-btn" onclick="showTab('users')">👥 All Users</button>
-            <button class="tab-btn" onclick="showTab('jobs')">📋 All Jobs</button>
+            <button class="tab-btn active" onclick="showTab('transactions')">💰 Transactions</button>
+            <button class="tab-btn" onclick="showTab('users')">👥 Users</button>
+            <button class="tab-btn" onclick="showTab('jobs')">📋 Job Posts (Seeker Jobs)</button>
+            <button class="tab-btn" onclick="showTab('services')">🔧 Provider Services</button>
         </div>
         
         <!-- Transactions Tab -->
         <div id="transactionsTab" class="card">
             <h2><i class="fas fa-history"></i> Recent Commission Transactions</h2>
-            <div style="overflow-x: auto;">
-                <table id="transactionsTable">
-                    <thead>
-                        <tr><th>ID</th><th>Job Title</th><th>Amount</th><th>Commission (10%)</th><th>Provider</th><th>Customer</th><th>Date</th></tr>
-                    </thead>
-                    <tbody id="transactionsList">
-                        <tr><td colspan="7" style="text-align: center;">Loading...<\/td><\/tr>
-                    </tbody>
-                </table>
-            </div>
+            <div style="overflow-x: auto;"><table id="transactionsTable"><thead><tr><th>Job Title</th><th>Amount</th><th>Commission</th><th>Provider</th><th>Customer</th><th>Date</th></tr></thead><tbody id="transactionsList"><tr><td colspan="6">Loading...</td></tr></tbody></table></div>
         </div>
         
         <!-- Users Tab -->
         <div id="usersTab" class="card" style="display: none;">
             <h2><i class="fas fa-users"></i> All Users</h2>
-            <div class="status-filter">
-                <input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="filterUsers()">
-                <select id="userTypeFilter" onchange="filterUsers()">
-                    <option value="">All Types</option>
-                    <option value="seeker">Seeker</option>
-                    <option value="provider">Provider</option>
-                    <option value="admin">Admin</option>
-                </select>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="usersTable">
-                    <thead>
-                        <tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th></tr>
-                    </thead>
-                    <tbody id="usersList">
-                        <tr><td colspan="7" style="text-align: center;">Loading...<\/td><\/tr>
-                    </tbody>
-                </table>
-            </div>
+            <div class="status-filter"><input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="filterUsers()"><select id="userTypeFilter" onchange="filterUsers()"><option value="">All Types</option><option value="seeker">Seeker</option><option value="provider">Provider</option><option value="admin">Admin</option></select></div>
+            <div style="overflow-x: auto;"><table id="usersTable"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th></tr></thead><tbody id="usersList"><tr><td colspan="7">Loading...</td></tr></tbody></table></div>
         </div>
         
-        <!-- Jobs Tab -->
+        <!-- Jobs Tab (Job Posts from Seekers) -->
         <div id="jobsTab" class="card" style="display: none;">
-            <h2><i class="fas fa-briefcase"></i> All Jobs</h2>
-            <div class="status-filter">
-                <input type="text" id="jobSearch" placeholder="Search by title..." onkeyup="filterJobs()">
-                <select id="jobStatusFilter" onchange="filterJobs()">
-                    <option value="">All Status</option>
-                    <option value="open">Open</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="completed">Completed</option>
-                </select>
-            </div>
-            <div style="overflow-x: auto;">
-                <table id="jobsTable">
-                    <thead>
-                        <tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget (GHS)</th><th>Location</th><th>Status</th><th>Bids</th><th>Created</th></tr>
-                    </thead>
-                    <tbody id="jobsList">
-                        <tr><td colspan="8" style="text-align: center;">Loading...<\/td><\/tr>
-                    </tbody>
-                </table>
-            </div>
+            <h2><i class="fas fa-briefcase"></i> Job Posts (What Seekers Need)</h2>
+            <div class="status-filter"><input type="text" id="jobSearch" placeholder="Search by title..." onkeyup="filterJobs()"><select id="jobStatusFilter" onchange="filterJobs()"><option value="">All Status</option><option value="open">Open</option><option value="assigned">Assigned</option><option value="completed">Completed</option></select></div>
+            <div style="overflow-x: auto;"><table id="jobsTable"><thead><tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Location</th><th>Status</th><th>Bids</th><th>Created</th></tr></thead><tbody id="jobsList"><tr><td colspan="8">Loading...</td></tr></tbody></table></div>
+        </div>
+        
+        <!-- Provider Services Tab (What Providers Offer) - NEW -->
+        <div id="servicesTab" class="card" style="display: none;">
+            <h2><i class="fas fa-tools"></i> Provider Services (What Providers Offer)</h2>
+            <div class="status-filter"><input type="text" id="serviceSearch" placeholder="Search by title or provider..." onkeyup="filterServices()"></div>
+            <div style="overflow-x: auto;"><table id="servicesTable"><thead><tr><th>ID</th><th>Service Title</th><th>Provider</th><th>Category</th><th>Price (GHS)</th><th>Price Type</th><th>Experience</th><th>Created</th></tr></thead><tbody id="servicesList"><tr><td colspan="8">Loading...</td></tr></tbody></table></div>
         </div>
     </div>
     
@@ -174,252 +131,131 @@
         let user = null;
         let allUsers = [];
         let allJobs = [];
+        let allServices = [];
         
         if (!token) window.location.href = 'index.html';
         
         try {
             user = JSON.parse(localStorage.getItem('user'));
-            if (user?.user_type !== 'admin') {
-                alert('Admin access required');
-                window.location.href = 'index.html';
-            }
+            if (user?.user_type !== 'admin') { alert('Admin access required'); window.location.href = 'index.html'; }
         } catch(e) {}
         
         async function apiCall(endpoint, options = {}) {
             try {
-                const response = await fetch(API_URL + endpoint, {
-                    ...options,
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-                });
+                const response = await fetch(API_URL + endpoint, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
                 return await response.json();
-            } catch (error) {
-                console.error('API Error:', error);
-                return { success: false, error: error.message };
-            }
-        }
-        
-        async function refreshAll() {
-            showToast('Refreshing data...', 'info');
-            await loadDashboard();
-            await loadTransactions();
-            await loadUsers();
-            await loadJobs();
-            showToast('Data refreshed!', 'success');
+            } catch (error) { return { success: false, error: error.message }; }
         }
         
         async function loadDashboard() {
             try {
-                // Get earnings
                 const earnings = await apiCall('/api/commission/earnings');
-                if (earnings.success) {
-                    document.getElementById('totalEarnings').innerHTML = `GHS ${(earnings.total_earnings || 0).toLocaleString()}`;
-                }
-                
-                // Get commission rate
+                if (earnings.success) document.getElementById('totalEarnings').innerHTML = `GHS ${(earnings.total_earnings || 0).toLocaleString()}`;
                 const rate = await apiCall('/api/commission/rate');
-                if (rate.success) {
-                    document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`;
-                    document.getElementById('commissionRate').value = rate.commission_rate || 10;
-                }
-                
-                // Get users stats
+                if (rate.success) { document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`; document.getElementById('commissionRate').value = rate.commission_rate || 10; }
                 const users = await apiCall('/api/admin/users');
-                if (users.success) {
-                    document.getElementById('totalUsers').innerHTML = users.total || 0;
-                    document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`;
-                }
-                
-                // Get jobs stats
-                const jobsStats = await apiCall('/api/admin/jobs/stats');
-                if (jobsStats.success) {
-                    document.getElementById('totalJobsCount').innerHTML = jobsStats.total || 0;
-                    document.getElementById('jobsBreakdown').innerHTML = `Open: ${jobsStats.open || 0} | Assigned: ${jobsStats.assigned || 0} | Completed: ${jobsStats.completed || 0}`;
-                }
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
+                if (users.success) { document.getElementById('totalUsers').innerHTML = users.total || 0; document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`; }
+                const jobs = await apiCall('/api/admin/jobs/stats');
+                if (jobs.success) document.getElementById('openJobs').innerHTML = jobs.open || 0;
+            } catch (error) { console.error('Error loading stats:', error); }
         }
         
         async function loadTransactions() {
             try {
                 const result = await apiCall('/api/commission/earnings');
                 const tbody = document.getElementById('transactionsList');
-                
                 if (result.success && result.recent_transactions && result.recent_transactions.length > 0) {
-                    tbody.innerHTML = result.recent_transactions.map((t, index) => `
-                        <tr>
-                            <td>${index + 1}</td>
-                            <td>${escapeHtml(t.job_title || 'Direct Hire')}</td>
-                            <td>GHS ${t.agreed_amount || 0}</td>
-                            <td style="color: #f59e0b;">GHS ${t.platform_commission || 0}</td>
-                            <td>${escapeHtml(t.provider_name || '-')}</td>
-                            <td>${escapeHtml(t.seeker_name || '-')}</td>
-                            <td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No transactions yet</td></tr>';
-                }
-            } catch (error) {
-                document.getElementById('transactionsList').innerHTML = '<tr><td colspan="7" style="text-align: center;">Error loading transactions</td></tr>';
-            }
+                    tbody.innerHTML = result.recent_transactions.map(t => `<tr><td>${escapeHtml(t.job_title || 'Direct Hire')}</td><td>GHS ${t.agreed_amount || 0}</td><td style="color:#f59e0b;">GHS ${t.platform_commission || 0}</td><td>${escapeHtml(t.provider_name || '-')}</td><td>${escapeHtml(t.seeker_name || '-')}</td><td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td></tr>`).join('');
+                } else { tbody.innerHTML = '<tr><td colspan="6">No transactions yet</td></tr>'; }
+            } catch (error) { document.getElementById('transactionsList').innerHTML = '<tr><td colspan="6">Error loading transactions</td></tr>'; }
         }
         
         async function loadUsers() {
             try {
                 const result = await apiCall('/api/admin/users');
-                const tbody = document.getElementById('usersList');
-                
-                if (result.success && result.users && result.users.length > 0) {
-                    allUsers = result.users;
-                    displayUsers(allUsers);
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No users found</td></tr>';
-                }
-            } catch (error) {
-                document.getElementById('usersList').innerHTML = '<tr><td colspan="7" style="text-align: center;">Error loading users</td></tr>';
-            }
+                if (result.success && result.users) { allUsers = result.users; displayUsers(allUsers); }
+                else { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">No users found</td></tr>'; }
+            } catch (error) { document.getElementById('usersList').innerHTML = '<tr><td colspan="7">Error loading users</td></tr>'; }
         }
         
         function displayUsers(users) {
             const tbody = document.getElementById('usersList');
-            if (users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No users match your search</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = users.map(u => `
-                <tr>
-                    <td>${u.id}</td>
-                    <td>${escapeHtml(u.full_name)}</td>
-                    <td>${escapeHtml(u.email)}</td>
-                    <td><span class="badge">${u.user_type}</span></td>
-                    <td>${u.phone || '-'}</td>
-                    <td>${escapeHtml(u.location || '-')}</td>
-                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                </tr>
-            `).join('');
+            if (users.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No users match your search</td></tr>'; return; }
+            tbody.innerHTML = users.map(u => `<tr><td>${u.id}</td><td>${escapeHtml(u.full_name)}</td><td>${escapeHtml(u.email)}</td><td><span class="badge">${u.user_type}</span></td><td>${u.phone || '-'}</td><td>${escapeHtml(u.location || '-')}</td><td>${new Date(u.created_at).toLocaleDateString()}</td></tr>`).join('');
         }
         
         function filterUsers() {
             const searchTerm = document.getElementById('userSearch').value.toLowerCase();
             const typeFilter = document.getElementById('userTypeFilter').value;
-            
             let filtered = allUsers;
-            
-            if (searchTerm) {
-                filtered = filtered.filter(u => 
-                    u.full_name.toLowerCase().includes(searchTerm) || 
-                    u.email.toLowerCase().includes(searchTerm)
-                );
-            }
-            
-            if (typeFilter) {
-                filtered = filtered.filter(u => u.user_type === typeFilter);
-            }
-            
+            if (searchTerm) filtered = filtered.filter(u => u.full_name.toLowerCase().includes(searchTerm) || u.email.toLowerCase().includes(searchTerm));
+            if (typeFilter) filtered = filtered.filter(u => u.user_type === typeFilter);
             displayUsers(filtered);
         }
         
         async function loadJobs() {
             try {
                 const result = await apiCall('/api/admin/jobs');
-                const tbody = document.getElementById('jobsList');
-                
-                console.log('Jobs API response:', result);
-                
-                if (result.success && result.jobs && result.jobs.length > 0) {
-                    allJobs = result.jobs;
-                    displayJobs(allJobs);
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No jobs found in the system</td></tr>';
-                }
-            } catch (error) {
-                console.error('Error loading jobs:', error);
-                document.getElementById('jobsList').innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading jobs</td></tr>';
-            }
+                if (result.success && result.jobs && result.jobs.length > 0) { allJobs = result.jobs; displayJobs(allJobs); }
+                else { document.getElementById('jobsList').innerHTML = '<tr><td colspan="8">No job posts found</td></tr>'; }
+            } catch (error) { document.getElementById('jobsList').innerHTML = '<tr><td colspan="8">Error loading jobs</td></tr>'; }
         }
         
         function displayJobs(jobs) {
             const tbody = document.getElementById('jobsList');
-            if (jobs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No jobs match your search</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = jobs.map(j => {
-                let statusClass = '';
-                if (j.status === 'open') statusClass = 'badge-open';
-                else if (j.status === 'assigned') statusClass = 'badge-assigned';
-                else if (j.status === 'completed') statusClass = 'badge-completed';
-                else statusClass = 'badge-pending';
-                
-                return `
-                    <tr>
-                        <td>${j.id}</td>
-                        <td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small style="opacity:0.7;">${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td>
-                        <td>${escapeHtml(j.seeker_name || 'Unknown')}</td>
-                        <td>GHS ${j.budget || 0}</td>
-                        <td>${escapeHtml(j.location || '-')}</td>
-                        <td><span class="badge ${statusClass}">${j.status || 'open'}</span></td>
-                        <td>${j.bid_count || 0}</td>
-                        <td>${new Date(j.created_at).toLocaleDateString()}</td>
-                    </tr>
-                `;
-            }).join('');
+            if (jobs.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No jobs match your search</td></tr>'; return; }
+            tbody.innerHTML = jobs.map(j => `<tr><td>${j.id}</td><td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small style="opacity:0.7;">${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td><td>${escapeHtml(j.seeker_name || 'Unknown')}</td><td>GHS ${j.budget || 0}</td><td>${escapeHtml(j.location || '-')}</td><td><span class="badge ${j.status === 'open' ? 'badge-open' : j.status === 'assigned' ? 'badge-assigned' : 'badge-completed'}">${j.status || 'open'}</span></td><td>${j.bid_count || 0}</td><td>${new Date(j.created_at).toLocaleDateString()}</td></tr>`).join('');
         }
         
         function filterJobs() {
             const searchTerm = document.getElementById('jobSearch').value.toLowerCase();
             const statusFilter = document.getElementById('jobStatusFilter').value;
-            
             let filtered = allJobs;
-            
-            if (searchTerm) {
-                filtered = filtered.filter(j => 
-                    (j.title || '').toLowerCase().includes(searchTerm) ||
-                    (j.seeker_name || '').toLowerCase().includes(searchTerm)
-                );
-            }
-            
-            if (statusFilter) {
-                filtered = filtered.filter(j => j.status === statusFilter);
-            }
-            
+            if (searchTerm) filtered = filtered.filter(j => (j.title || '').toLowerCase().includes(searchTerm) || (j.seeker_name || '').toLowerCase().includes(searchTerm));
+            if (statusFilter) filtered = filtered.filter(j => j.status === statusFilter);
             displayJobs(filtered);
+        }
+        
+        // NEW: Load Provider Services
+        async function loadServices() {
+            try {
+                const result = await apiCall('/api/admin/services');
+                if (result.success && result.services && result.services.length > 0) { allServices = result.services; displayServices(allServices); }
+                else { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">No provider services found</td></tr>'; }
+            } catch (error) { document.getElementById('servicesList').innerHTML = '<tr><td colspan="8">Error loading services</td></tr>'; }
+        }
+        
+        function displayServices(services) {
+            const tbody = document.getElementById('servicesList');
+            if (services.length === 0) { tbody.innerHTML = '<tr><td colspan="8">No services match your search</td></tr>'; return; }
+            tbody.innerHTML = services.map(s => `<tr><td>${s.id}</td><td><strong>${escapeHtml(s.title)}</strong><br><small style="opacity:0.7;">${escapeHtml((s.description || '').substring(0, 40))}${s.description?.length > 40 ? '...' : ''}</small></td><td>${escapeHtml(s.provider_name)}</td><td>${escapeHtml(s.category_name)}</td><td>GHS ${s.price || 'Negotiable'}</td><td>${s.price_type || 'fixed'}</td><td>${s.experience_years || 0} years</td><td>${new Date(s.created_at).toLocaleDateString()}</td></tr>`).join('');
+        }
+        
+        function filterServices() {
+            const searchTerm = document.getElementById('serviceSearch').value.toLowerCase();
+            let filtered = allServices;
+            if (searchTerm) filtered = filtered.filter(s => (s.title || '').toLowerCase().includes(searchTerm) || (s.provider_name || '').toLowerCase().includes(searchTerm));
+            displayServices(filtered);
         }
         
         async function updateCommissionRate() {
             const rate = document.getElementById('commissionRate').value;
-            if (!rate || rate < 0 || rate > 100) {
-                showToast('Please enter a rate between 0 and 100', 'error');
-                return;
-            }
-            
-            const result = await apiCall('/api/commission/rate', {
-                method: 'PUT',
-                body: JSON.stringify({ rate: parseFloat(rate) })
-            });
-            
-            if (result.success) {
-                showToast(result.message, 'success');
-                loadDashboard();
-            } else {
-                showToast(result.message || 'Failed to update', 'error');
-            }
+            if (!rate || rate < 0 || rate > 100) { showToast('Please enter a rate between 0 and 100', 'error'); return; }
+            const result = await apiCall('/api/commission/rate', { method: 'PUT', body: JSON.stringify({ rate: parseFloat(rate) }) });
+            if (result.success) { showToast(result.message, 'success'); loadDashboard(); }
+            else { showToast(result.message || 'Failed to update', 'error'); }
         }
         
         function showTab(tab) {
             document.getElementById('transactionsTab').style.display = tab === 'transactions' ? 'block' : 'none';
             document.getElementById('usersTab').style.display = tab === 'users' ? 'block' : 'none';
             document.getElementById('jobsTab').style.display = tab === 'jobs' ? 'block' : 'none';
-            
+            document.getElementById('servicesTab').style.display = tab === 'services' ? 'block' : 'none';
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
-            
-            // Refresh data when switching tabs
             if (tab === 'users') loadUsers();
             if (tab === 'jobs') loadJobs();
+            if (tab === 'services') loadServices();
         }
         
         function showToast(msg, type) {
@@ -430,25 +266,11 @@
             setTimeout(() => toast.style.display = 'none', 3000);
         }
         
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
-        }
+        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
         
-        function logout() { 
-            localStorage.clear(); 
-            window.location.href = 'index.html'; 
-        }
-        
-        // Load everything on page load
-        loadDashboard();
-        loadTransactions();
-        
-        // Refresh every 30 seconds
-        setInterval(() => {
-            loadDashboard();
-            if (document.getElementById('transactionsTab').style.display !== 'none') loadTransactions();
-        }, 30000);
+        loadDashboard(); loadTransactions();
+        setInterval(() => { loadDashboard(); if (document.getElementById('transactionsTab').style.display !== 'none') loadTransactions(); }, 30000);
     </script>
 </body>
 </html>
