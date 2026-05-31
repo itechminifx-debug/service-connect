@@ -1119,70 +1119,49 @@ app.get('/api/commission/rate', authenticateToken, async (req, res) => {
     }
 });
 
-// Update commission rate (admin only)
-app.put('/api/commission/rate', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { rate } = req.body;
-    
-    if (!rate || rate < 0 || rate > 100) {
-        return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
-    }
-    
-    try {
-        await pool.query(
-            `INSERT INTO admin_settings (setting_key, setting_value, updated_at) 
-             VALUES ('commission_rate', $1, CURRENT_TIMESTAMP)
-             ON CONFLICT (setting_key) DO UPDATE 
-             SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`,
-            [rate]
-        );
-        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Debug endpoint - check jobs (admin only)
-app.get('/api/debug/jobs', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ error: 'Admin only' });
-    }
-    
-    try {
-        const result = await pool.query('SELECT id, title, status, created_at FROM job_posts ORDER BY created_at DESC LIMIT 10');
-        const count = await pool.query('SELECT COUNT(*) FROM job_posts');
-        res.json({ 
-            success: true, 
-            total_jobs: parseInt(count.rows[0].count),
-            jobs: result.rows
-        });
-    } catch (error) {
-        res.json({ error: error.message });
-    }
-});
-// Get all provider services (admin only)
-app.get('/api/admin/services', authenticateToken, async (req, res) => {
+// Get earnings data (potential earnings - no actual payment)
+app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
     }
     
     try {
-        const result = await pool.query(`
-            SELECT ps.*, u.full_name as provider_name, c.name as category_name
-            FROM provider_services ps
-            JOIN users u ON ps.provider_id = u.id
-            JOIN categories c ON ps.category_id = c.id
-            WHERE ps.is_active = true
-            ORDER BY ps.created_at DESC
-            LIMIT 100
+        // Get total transaction value from completed jobs
+        const totalResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(agreed_amount), 0) as total_value,
+                COALESCE(SUM(platform_commission), 0) as total_commission,
+                COUNT(*) as completed_count
+            FROM accepted_jobs 
+            WHERE status = 'completed'
         `);
         
-        res.json({ success: true, services: result.rows });
+        // Get recent transactions
+        const recentResult = await pool.query(`
+            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
+                   aj.completed_at, aj.status,
+                   p.full_name as provider_name, 
+                   s.full_name as seeker_name,
+                   COALESCE(jp.title, ps.title, 'Direct Hire') as job_title
+            FROM accepted_jobs aj
+            JOIN users p ON aj.provider_id = p.id
+            JOIN users s ON aj.seeker_id = s.id
+            LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+            LEFT JOIN provider_services ps ON aj.service_id = ps.id
+            WHERE aj.status = 'completed'
+            ORDER BY aj.completed_at DESC
+            LIMIT 50
+        `);
+        
+        res.json({
+            success: true,
+            total_transaction_value: parseFloat(totalResult.rows[0].total_value) || 0,
+            total_potential_commission: parseFloat(totalResult.rows[0].total_commission) || 0,
+            completed_jobs: parseInt(totalResult.rows[0].completed_count) || 0,
+            recent_transactions: recentResult.rows || []
+        });
     } catch (error) {
-        console.error('Error getting services:', error);
+        console.error('Error getting earnings:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
