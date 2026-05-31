@@ -41,7 +41,7 @@
         .bid-amount { font-weight: 700; color: #10b981; font-size: 18px; margin-bottom: 10px; }
         .bid-provider { font-weight: 600; margin-bottom: 5px; }
         .accept-btn { background: #10b981; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
-        .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
+        .review-btn { background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         .post-job-form { background: white; border-radius: 20px; padding: 25px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .form-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 15px; }
@@ -54,7 +54,13 @@
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         .button-group { display: flex; gap: 10px; margin-top: 10px; }
         .button-group button { flex: 1; margin-top: 0; }
-        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
+        .rating-stars { display: inline-flex; align-items: center; gap: 2px; margin-left: 10px; }
+        .rating-stars i { color: #f59e0b; font-size: 12px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .star { font-size: 40px; cursor: pointer; color: #cbd5e1; transition: color 0.2s; }
+        .star.selected { color: #f59e0b; }
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -63,7 +69,7 @@
         <div class="nav-links">
             <a href="#" class="nav-link active">📋 My Dashboard</a>
             <a href="#" class="nav-link" onclick="window.location.href='marketplace.html'">🛒 Marketplace</a>
-            <a href="chat.html" class="nav-link" id="chatNavLink">💬 Messages <span id="unreadBadge" style="background:#ef4444; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:5px; display:none;"></span></a>
+            <a href="chat.html" class="nav-link">💬 Messages</a>
         </div>
         <div class="user-info">
             <span class="user-name" id="userName">Customer</span>
@@ -79,7 +85,6 @@
 
         <div class="stats-grid" id="statsGrid"></div>
 
-        <!-- Post a Job Form -->
         <div class="post-job-form">
             <div class="form-title">📝 Post a New Job</div>
             <div class="form-row">
@@ -95,21 +100,34 @@
             <button class="btn-primary" onclick="postJob()">Post Job →</button>
         </div>
 
-        <!-- Tabs -->
         <div class="tabs">
             <button class="tab active" onclick="showTab('postedJobs')">📋 My Posted Jobs</button>
             <button class="tab" onclick="showTab('directHires')">🔄 Direct Hires</button>
             <button class="tab" onclick="showTab('bids')">📩 Received Bids</button>
         </div>
 
-        <!-- My Posted Jobs Tab -->
         <div id="postedJobs" class="cards-grid"></div>
-
-        <!-- Direct Hires Tab -->
         <div id="directHires" style="display: none;" class="cards-grid"></div>
-
-        <!-- Received Bids Tab -->
         <div id="bids" style="display: none;" class="cards-grid"></div>
+    </div>
+
+    <div id="reviewModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">⭐ Rate Your Experience</h3>
+            <p style="margin-bottom:15px;">How was your experience with <strong id="reviewProviderName"></strong>?</p>
+            <div style="display:flex; gap:10px; justify-content:center; margin-bottom:20px;">
+                <span class="star" data-rating="1" onclick="setRating(1)">☆</span>
+                <span class="star" data-rating="2" onclick="setRating(2)">☆</span>
+                <span class="star" data-rating="3" onclick="setRating(3)">☆</span>
+                <span class="star" data-rating="4" onclick="setRating(4)">☆</span>
+                <span class="star" data-rating="5" onclick="setRating(5)">☆</span>
+            </div>
+            <textarea id="reviewComment" rows="4" placeholder="Write your review here (optional)..." style="width:100%; padding:12px; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:20px;"></textarea>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-primary" style="flex:1;" onclick="submitReview()">Submit Review</button>
+                <button class="accept-btn" style="flex:1; background:#64748b;" onclick="closeReviewModal()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <div id="toast" class="toast"></div>
@@ -119,6 +137,9 @@
         let token = localStorage.getItem('token');
         let user = null;
         let categories = [];
+        let currentReviewJobId = null;
+        let currentReviewRevieweeId = null;
+        let currentRating = 0;
 
         if (!token) window.location.href = 'index.html';
         try {
@@ -137,59 +158,27 @@
             document.getElementById('jobCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
         }
 
-        async function loadDashboard() { await loadPostedJobs(); await loadDirectHires(); await loadBids(); await loadStats(); await loadUnreadCount(); }
+        async function loadDashboard() { await loadPostedJobs(); await loadDirectHires(); await loadBids(); await loadStats(); }
 
-        // ============ CHAT FUNCTION FOR SEEKER ============
-        async function startChatWithProvider(providerId, jobId = null, directHireId = null) {
-            if (!providerId) {
-                showToast('Provider ID not found', 'error');
-                return;
-            }
-            
-            const result = await apiCall('/api/conversations', {
-                method: 'POST',
-                body: JSON.stringify({
-                    provider_id: providerId,
-                    job_id: jobId,
-                    direct_hire_id: directHireId
-                })
-            });
-            
-            if (result.success) {
-                window.location.href = `chat.html?conversation=${result.conversation.id}`;
-            } else {
-                showToast(result.message || 'Failed to start chat', 'error');
-            }
-        }
-
-        async function loadUnreadCount() {
-            try {
-                const result = await apiCall('/api/messages/unread-count');
-                if (result.success && result.unread_count > 0) {
-                    const badge = document.getElementById('unreadBadge');
-                    badge.style.display = 'inline';
-                    badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-                } else {
-                    document.getElementById('unreadBadge').style.display = 'none';
-                }
-            } catch(e) {}
-        }
-
-        // ============ POST A JOB ============
         async function postJob() {
             const category_id = document.getElementById('jobCategory').value;
             const title = document.getElementById('jobTitle').value;
             const description = document.getElementById('jobDescription').value;
             if (!category_id || !title || !description) { showToast('Fill category, title, and description', 'error'); return; }
             const result = await apiCall('/api/jobs', { method: 'POST', body: JSON.stringify({ category_id, title, description, budget: document.getElementById('jobBudget').value, location: document.getElementById('jobLocation').value, preferred_date: document.getElementById('jobDate').value }) });
-            if (result.success) {
-                showToast('Job posted!', 'success');
-                document.getElementById('jobTitle').value = ''; document.getElementById('jobDescription').value = ''; document.getElementById('jobBudget').value = ''; document.getElementById('jobLocation').value = ''; document.getElementById('jobDate').value = '';
-                loadPostedJobs(); loadStats();
-            } else { showToast(result.message || 'Failed', 'error'); }
+            if (result.success) { showToast('Job posted!', 'success'); document.getElementById('jobTitle').value = ''; document.getElementById('jobDescription').value = ''; document.getElementById('jobBudget').value = ''; document.getElementById('jobLocation').value = ''; document.getElementById('jobDate').value = ''; loadPostedJobs(); loadStats(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY POSTED JOBS ============
+        function renderStars(rating) {
+            if (!rating || rating === 0) return '<span style="color:#cbd5e1;">★★★★★</span> <span style="font-size:12px;">No reviews</span>';
+            const fullStars = Math.floor(rating);
+            let stars = '';
+            for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
+            for (let i = 0; i < 5 - fullStars; i++) stars += '<i class="far fa-star"></i>';
+            return `${stars} <span style="font-size:12px;">${rating.toFixed(1)}</span>`;
+        }
+
         async function loadPostedJobs() {
             const jobs = await apiCall('/api/jobs/my');
             const container = document.getElementById('postedJobs');
@@ -202,15 +191,11 @@
                     <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
                     <div class="job-details">📍 ${job.location || 'Location not specified'} | 👁️ ${job.views || 0} views</div>
                     <div class="job-details">Status: ${job.status === 'open' ? '<span class="badge-pending">🟢 Open</span>' : job.status === 'assigned' ? '<span class="badge-accepted">🟡 Assigned</span>' : '<span class="badge-completed">🔵 Completed</span>'}</div>
-                    <div class="button-group">
-                        ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">📩 Bids</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithProvider(null, ${job.id})" style="background:#8b5cf6;">💬 Messages</button>
-                    </div>
+                    ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">View Bids (${job.bid_count || 0})</button>` : ''}
                 </div>
             `).join('');
         }
 
-        // ============ DIRECT HIRES ============
         async function loadDirectHires() {
             const hires = await apiCall('/api/seeker/direct-hires');
             const container = document.getElementById('directHires');
@@ -219,23 +204,22 @@
                 <div class="hire-card">
                     <span class="job-category">🛒 Direct Hire</span>
                     <div class="job-title">${escapeHtml(hire.service_title)}</div>
-                    <div class="job-details">Provider: ${escapeHtml(hire.provider_name)} ⭐ ${hire.provider_rating || 'New'}</div>
+                    <div class="job-details">Provider: ${escapeHtml(hire.provider_name)} ${renderStars(hire.provider_rating)}</div>
                     <div class="job-budget">💰 Amount: GHS ${hire.agreed_amount}</div>
                     <div class="job-details">📝 "${escapeHtml(hire.message || 'No message')}"</div>
                     <div class="job-details">Status: ${hire.status === 'pending' ? '<span class="badge-pending">⏳ Pending Provider Response</span>' : hire.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted - In Progress</span>' : '<span class="badge-completed">❌ Declined</span>'}</div>
                     <div class="job-details">📅 Hired on: ${new Date(hire.created_at).toLocaleDateString()}</div>
-                    <button class="chat-btn" onclick="startChatWithProvider(${hire.provider_id}, null, ${hire.id})" style="background:#8b5cf6;">💬 Message Provider</button>
+                    ${hire.status === 'completed' && !hire.reviewed ? `<button class="review-btn" onclick="openReviewModal(${hire.id}, ${hire.provider_id}, '${escapeHtml(hire.provider_name)}')">⭐ Leave Review</button>` : ''}
                 </div>
             `).join('');
         }
 
-        // ============ RECEIVED BIDS ============
         async function loadBids() {
             const myJobs = await apiCall('/api/jobs/my');
             let allBids = [];
             for (const job of myJobs) {
                 const bids = await apiCall(`/api/jobs/${job.id}/bids`);
-                if (bids && bids.length > 0) allBids.push(...bids.map(bid => ({ ...bid, job_title: job.title, job_id: job.id, job_budget: job.budget, job_seeker_id: job.seeker_id })));
+                if (bids && bids.length > 0) allBids.push(...bids.map(bid => ({ ...bid, job_title: job.title, job_id: job.id, job_budget: job.budget })));
             }
             const container = document.getElementById('bids');
             if (allBids.length === 0) { container.innerHTML = '<div class="empty-state">📩 No bids received yet. Post a job to receive bids from providers!</div>'; return; }
@@ -243,14 +227,11 @@
                 <div class="bid-card">
                     <span class="job-category">📝 Bid Received</span>
                     <div class="job-title">${escapeHtml(bid.job_title)}</div>
-                    <div class="bid-provider">Provider: ${escapeHtml(bid.provider_name)} ⭐ ${bid.provider_rating || 'New'}</div>
+                    <div class="bid-provider">Provider: ${escapeHtml(bid.provider_name)} ${renderStars(bid.provider_rating)}</div>
                     <div class="bid-amount">💰 Bid: GHS ${bid.amount}</div>
                     <div class="job-details">⏱️ ${bid.estimated_days} day(s) | 📝 "${escapeHtml(bid.message || 'No message')}"</div>
                     <div class="job-details">Your Budget: GHS ${bid.job_budget || 'Negotiable'}</div>
-                    <div class="button-group">
-                        ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">✅ Accept</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
-                        <button class="chat-btn" onclick="startChatWithProvider(${bid.provider_id}, ${bid.job_id})" style="background:#8b5cf6;">💬 Chat</button>
-                    </div>
+                    ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">Accept Bid (GHS ${bid.amount})</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
                 </div>
             `).join('');
         }
@@ -292,72 +273,41 @@
             if (tab === 'directHires') loadDirectHires();
         }
 
+        function openReviewModal(jobId, revieweeId, providerName) {
+            currentReviewJobId = jobId;
+            currentReviewRevieweeId = revieweeId;
+            currentRating = 0;
+            document.getElementById('reviewProviderName').innerText = providerName;
+            document.getElementById('reviewComment').value = '';
+            document.querySelectorAll('.star').forEach(star => { star.classList.remove('selected'); star.innerText = '☆'; });
+            document.getElementById('reviewModal').style.display = 'flex';
+        }
+
+        function setRating(rating) {
+            currentRating = rating;
+            const stars = document.querySelectorAll('.star');
+            stars.forEach((star, index) => {
+                if (index < rating) { star.classList.add('selected'); star.innerText = '★'; }
+                else { star.classList.remove('selected'); star.innerText = '☆'; }
+            });
+        }
+
+        async function submitReview() {
+            if (currentRating === 0) { showToast('Please select a rating', 'error'); return; }
+            const comment = document.getElementById('reviewComment').value;
+            showToast('Submitting review...', 'info');
+            const result = await apiCall('/api/reviews', { method: 'POST', body: JSON.stringify({ job_id: currentReviewJobId, reviewee_id: currentReviewRevieweeId, rating: currentRating, comment: comment }) });
+            if (result.success) { showToast('⭐ Review submitted successfully!', 'success'); closeReviewModal(); loadDirectHires(); }
+            else { showToast(result.message || 'Failed to submit review', 'error'); }
+        }
+
+        function closeReviewModal() { document.getElementById('reviewModal').style.display = 'none'; currentReviewJobId = null; currentReviewRevieweeId = null; currentRating = 0; }
+
         function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
         function logout() { localStorage.clear(); window.location.href = 'index.html'; }
         function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
-        setInterval(loadUnreadCount, 10000);
         loadCategories(); loadDashboard();
-
-
-
-// ============ NOTIFICATION SYSTEM ============
-
-// Load unread message count and show badge
-async function loadUnreadCount() {
-    try {
-        const result = await apiCall('/api/messages/unread-count');
-        console.log('Unread count response:', result); // Debug log
-        
-        if (result.success && result.unread_count > 0) {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) {
-                badge.style.display = 'inline';
-                badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-            }
-            
-            // Update browser tab title
-            document.title = `(${result.unread_count}) Service Connect`;
-            
-            // Optional: Show browser notification
-            if (Notification.permission === 'granted' && result.unread_count > 0) {
-                // Only notify once per session
-                if (!window.hasNotified && result.unread_count > 0) {
-                    new Notification('New Message!', {
-                        body: `You have ${result.unread_count} unread message(s)`,
-                        icon: '/favicon.ico'
-                    });
-                    window.hasNotified = true;
-                    setTimeout(() => { window.hasNotified = false; }, 30000);
-                }
-            }
-        } else {
-            const badge = document.getElementById('unreadBadge');
-            if (badge) badge.style.display = 'none';
-            document.title = 'Service Connect';
-        }
-    } catch (error) {
-        console.error('Error loading unread count:', error);
-    }
-}
-
-// Request notification permission
-async function requestNotificationPermission() {
-    if ('Notification' in window) {
-        const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            console.log('✅ Notifications enabled');
-        }
-    }
-}
-
-// Call these when page loads
-requestNotificationPermission();
-loadUnreadCount();
-
-// Check for new messages every 5 seconds
-setInterval(loadUnreadCount, 5000);
-
     </script>
 </body>
 </html>
