@@ -966,7 +966,163 @@ app.get('/admin-dashboard.html', (req, res) => {
     if (filePath) res.sendFile(filePath);
     else res.status(404).send('File not found');
 });
+// ==================== ADMIN ENDPOINTS ====================
 
+// Get all users (admin only)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    try {
+        const result = await pool.query(
+            `SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, created_at, last_login
+             FROM users
+             ORDER BY created_at DESC`
+        );
+        
+        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
+        const providers = result.rows.filter(u => u.user_type === 'provider').length;
+        const admins = result.rows.filter(u => u.user_type === 'admin').length;
+        
+        res.json({ 
+            success: true, 
+            users: result.rows,
+            total: result.rows.length,
+            seekers: seekers,
+            providers: providers,
+            admins: admins
+        });
+    } catch (error) {
+        console.error('Error getting users:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all jobs (admin only)
+app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    try {
+        const result = await pool.query(
+            `SELECT jp.*, u.full_name as seeker_name, u.email as seeker_email,
+                    (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count
+             FROM job_posts jp
+             LEFT JOIN users u ON jp.seeker_id = u.id
+             ORDER BY jp.created_at DESC
+             LIMIT 50`
+        );
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        console.error('Error getting jobs:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get jobs stats (admin only)
+app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false });
+    }
+    
+    try {
+        const result = await pool.query(
+            `SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN status = 'open' THEN 1 END) as open,
+                COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned,
+                COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
+             FROM job_posts`
+        );
+        res.json({ success: true, ...result.rows[0] });
+    } catch (error) {
+        console.error('Error getting jobs stats:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get commission earnings (admin only) - make sure this exists
+app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    try {
+        // Get total earnings
+        const totalResult = await pool.query(`
+            SELECT COALESCE(SUM(platform_commission), 0) as total_earnings 
+            FROM accepted_jobs 
+            WHERE status = 'completed'
+        `);
+        
+        // Get recent transactions
+        const recentResult = await pool.query(`
+            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.provider_earnings,
+                   aj.completed_at, aj.status,
+                   p.full_name as provider_name, 
+                   s.full_name as seeker_name,
+                   COALESCE(jp.title, ps.title, 'Direct Hire') as job_title
+            FROM accepted_jobs aj
+            JOIN users p ON aj.provider_id = p.id
+            JOIN users s ON aj.seeker_id = s.id
+            LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+            LEFT JOIN provider_services ps ON aj.service_id = ps.id
+            WHERE aj.status = 'completed'
+            ORDER BY aj.completed_at DESC
+            LIMIT 20
+        `);
+        
+        res.json({
+            success: true,
+            total_earnings: parseFloat(totalResult.rows[0].total_earnings) || 0,
+            recent_transactions: recentResult.rows || []
+        });
+    } catch (error) {
+        console.error('Error getting earnings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get commission rate
+app.get('/api/commission/rate', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
+        const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
+        res.json({ success: true, commission_rate: rate });
+    } catch (error) {
+        console.error('Error getting commission rate:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update commission rate (admin only)
+app.put('/api/commission/rate', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { rate } = req.body;
+    
+    if (!rate || rate < 0 || rate > 100) {
+        return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
+    }
+    
+    try {
+        await pool.query(
+            `INSERT INTO admin_settings (setting_key, setting_value, updated_at) 
+             VALUES ('commission_rate', $1, CURRENT_TIMESTAMP)
+             ON CONFLICT (setting_key) DO UPDATE 
+             SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`,
+            [rate]
+        );
+        res.json({ success: true, message: `Commission rate updated to ${rate}%` });
+    } catch (error) {
+        console.error('Error updating commission rate:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
