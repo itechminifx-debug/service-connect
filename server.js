@@ -27,7 +27,6 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000,
 });
 
-// Test database connection
 pool.query('SELECT NOW()', (err, res) => {
     if (err) {
         console.error('❌ Database connection failed:', err.message);
@@ -133,6 +132,7 @@ async function createTables() {
                 provider_id INTEGER REFERENCES users(id),
                 seeker_id INTEGER REFERENCES users(id),
                 bid_id INTEGER REFERENCES bids(id),
+                service_id INTEGER REFERENCES provider_services(id),
                 agreed_amount DECIMAL(10,2),
                 platform_commission DECIMAL(10,2) DEFAULT 0,
                 provider_earnings DECIMAL(10,2) DEFAULT 0,
@@ -204,16 +204,16 @@ async function createTables() {
         if (parseInt(catCount.rows[0].count) === 0) {
             await client.query(`
                 INSERT INTO categories (name, icon, description, display_order) VALUES
-                ('Plumbing', '🔧', 'Plumbing services including repairs and installations', 1),
-                ('Electrical', '⚡', 'Electrical repairs and wiring services', 2),
-                ('Cleaning', '🧹', 'Home and office cleaning services', 3),
-                ('Tutoring', '📚', 'Academic tutoring and coaching', 4),
-                ('Computer Repair', '💻', 'Computer and laptop repair services', 5),
-                ('Photography', '📸', 'Photography and videography services', 6),
-                ('Driving', '🚗', 'Driving services and lessons', 7),
-                ('Catering', '🍳', 'Food catering for events', 8),
-                ('Construction', '🏗️', 'Construction and renovation services', 9),
-                ('Painting', '🎨', 'Painting and decorating services', 10)
+                ('Plumbing', '🔧', 'Plumbing services', 1),
+                ('Electrical', '⚡', 'Electrical services', 2),
+                ('Cleaning', '🧹', 'Cleaning services', 3),
+                ('Tutoring', '📚', 'Tutoring services', 4),
+                ('Computer Repair', '💻', 'Computer repair', 5),
+                ('Photography', '📸', 'Photography services', 6),
+                ('Driving', '🚗', 'Driving services', 7),
+                ('Catering', '🍳', 'Catering services', 8),
+                ('Construction', '🏗️', 'Construction services', 9),
+                ('Painting', '🎨', 'Painting services', 10)
             `);
         }
 
@@ -246,13 +246,6 @@ const authenticateToken = (req, res, next) => {
     } catch (error) {
         return res.status(403).json({ success: false, message: 'Invalid token' });
     }
-};
-
-const isAdmin = (req, res, next) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    next();
 };
 
 // ==================== AUTH ROUTES ====================
@@ -491,10 +484,9 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
         await pool.query('UPDATE bids SET status = $1 WHERE id = $2', ['accepted', bidId]);
         await pool.query('UPDATE job_posts SET status = $1 WHERE id = $2', ['assigned', bid.job_id]);
         
-        const acceptedResult = await pool.query(
+        await pool.query(
             `INSERT INTO accepted_jobs (job_post_id, provider_id, seeker_id, bid_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted')
-             RETURNING *`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted')`,
             [bid.job_id, bid.provider_id, req.user.id, bidId, bid.amount, commission, providerEarnings, commissionRate]
         );
         
@@ -506,7 +498,7 @@ app.put('/api/bids/:bidId/accept', authenticateToken, async (req, res) => {
         
         await pool.query('COMMIT');
         
-        res.json({ success: true, message: `Bid accepted! Commission: ${commissionRate}% (GHS ${commission})` });
+        res.json({ success: true, message: `Bid accepted! Commission: ${commissionRate}%` });
     } catch (error) {
         await pool.query('ROLLBACK');
         console.error('Accept bid error:', error);
@@ -538,9 +530,10 @@ app.get('/api/provider/jobs', authenticateToken, async (req, res) => {
     
     try {
         const result = await pool.query(
-            `SELECT aj.*, jp.title as job_title, u.full_name as seeker_name, u.phone as seeker_phone
+            `SELECT aj.*, jp.title as job_title, u.full_name as seeker_name, u.phone as seeker_phone, ps.title as service_title
              FROM accepted_jobs aj
-             JOIN job_posts jp ON aj.job_post_id = jp.id
+             LEFT JOIN job_posts jp ON aj.job_post_id = jp.id
+             LEFT JOIN provider_services ps ON aj.service_id = ps.id
              JOIN users u ON aj.seeker_id = u.id
              WHERE aj.provider_id = $1
              ORDER BY aj.created_at DESC`,
@@ -690,34 +683,37 @@ app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
     }
     
     try {
-        const result = await pool.query(
-            `UPDATE direct_hires 
-             SET status = $1 
-             WHERE id = $2 AND provider_id = $3
-             RETURNING *`,
-            [status, id, req.user.id]
+        const hireResult = await pool.query(
+            `SELECT dh.* FROM direct_hires dh WHERE dh.id = $1 AND dh.provider_id = $2`,
+            [id, req.user.id]
         );
         
-        if (result.rows.length === 0) {
+        if (hireResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Hire request not found' });
         }
         
-        // If accepted, also create an entry in accepted_jobs
+        const hire = hireResult.rows[0];
+        
+        await pool.query(
+            `UPDATE direct_hires SET status = $1 WHERE id = $2 AND provider_id = $3`,
+            [status, id, req.user.id]
+        );
+        
         if (status === 'accepted') {
-            const hire = result.rows[0];
             const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
             const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
+            
             const commission = (hire.agreed_amount * commissionRate) / 100;
             const providerEarnings = hire.agreed_amount - commission;
             
             await pool.query(
-                `INSERT INTO accepted_jobs (provider_id, seeker_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'accepted')`,
-                [req.user.id, hire.customer_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
+                `INSERT INTO accepted_jobs (provider_id, seeker_id, service_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', CURRENT_TIMESTAMP)`,
+                [req.user.id, hire.customer_id, hire.service_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
             );
         }
         
-        res.json({ success: true, message: status === 'accepted' ? 'Hire request accepted!' : 'Hire request declined' });
+        res.json({ success: true, message: status === 'accepted' ? 'Hire request accepted! Job added to My Jobs.' : 'Hire request declined' });
     } catch (error) {
         console.error('Respond error:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -741,13 +737,6 @@ app.get('/api/seeker/direct-hires', authenticateToken, async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
-});
-
-// ==================== COMMISSION ====================
-app.get('/api/commission/rate', authenticateToken, async (req, res) => {
-    const result = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
-    const rate = result.rows.length > 0 ? parseFloat(result.rows[0].setting_value) : 10;
-    res.json({ success: true, commission_rate: rate });
 });
 
 // ==================== DASHBOARD STATS ====================
