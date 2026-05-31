@@ -10,14 +10,7 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Comment this line:
 
-
-// Add this dummy function instead:
-
-    console.log(`📧 Email would be sent to ${to}: ${type}`);
-    return true;
-};
 
 // Middleware
 app.use(cors());
