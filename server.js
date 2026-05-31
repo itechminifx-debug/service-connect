@@ -815,43 +815,99 @@ app.get('/api/provider/hire-requests', authenticateToken, async (req, res) => {
     }
 });
 
+// Respond to direct hire request (FIXED)
 app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can respond to hire requests' });
+    }
     
+    const { id } = req.params;
     const { status } = req.body;
     
+    // Validate status
+    if (!status || (status !== 'accepted' && status !== 'rejected')) {
+        return res.status(400).json({ success: false, message: 'Status must be "accepted" or "rejected"' });
+    }
+    
     try {
+        console.log(`📝 Processing hire request ${id} as ${status} for provider ${req.user.id}`);
+        
+        // First, get the hire request and verify it belongs to this provider
         const hireResult = await pool.query(
-            `SELECT dh.* FROM direct_hires dh WHERE dh.id = $1 AND dh.provider_id = $2`,
-            [req.params.id, req.user.id]
+            `SELECT dh.*, ps.title as service_title, ps.provider_id, u.full_name as customer_name
+             FROM direct_hires dh
+             JOIN provider_services ps ON dh.service_id = ps.id
+             JOIN users u ON dh.customer_id = u.id
+             WHERE dh.id = $1 AND dh.provider_id = $2`,
+            [id, req.user.id]
         );
         
         if (hireResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Hire request not found' });
+            console.log(`❌ Hire request ${id} not found for provider ${req.user.id}`);
+            return res.status(404).json({ success: false, message: 'Hire request not found or not assigned to you' });
         }
         
         const hire = hireResult.rows[0];
         
-        await pool.query('UPDATE direct_hires SET status = $1 WHERE id = $2', [status, req.params.id]);
+        // Check if already responded
+        if (hire.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `This request has already been ${hire.status}` });
+        }
+        
+        // Start transaction
+        await pool.query('BEGIN');
+        
+        // Update the hire request status
+        await pool.query(
+            'UPDATE direct_hires SET status = $1 WHERE id = $2 AND provider_id = $3',
+            [status, id, req.user.id]
+        );
+        console.log(`✅ Hire request ${id} status updated to ${status}`);
         
         if (status === 'accepted') {
+            // Get commission rate
             const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
             const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
             
+            // Calculate commission
             const commission = (hire.agreed_amount * commissionRate) / 100;
             const providerEarnings = hire.agreed_amount - commission;
             
-            await pool.query(
-                `INSERT INTO accepted_jobs (provider_id, seeker_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'accepted')`,
+            console.log(`💰 Commission: ${commissionRate}% = GHS ${commission}, Provider earns: GHS ${providerEarnings}`);
+            
+            // Create accepted job record
+            const acceptedResult = await pool.query(
+                `INSERT INTO accepted_jobs (provider_id, seeker_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'accepted', CURRENT_TIMESTAMP)
+                 RETURNING *`,
                 [req.user.id, hire.customer_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
+            );
+            console.log(`✅ Accepted job created with ID ${acceptedResult.rows[0].id}`);
+            
+            // Create commission transaction record
+            await pool.query(
+                `INSERT INTO commission_transactions (job_id, amount, commission_rate, platform_earnings, provider_id, seeker_id, status, transaction_date)
+                 VALUES ($1, $2, $3, $4, $5, $6, 'pending', CURRENT_TIMESTAMP)`,
+                [acceptedResult.rows[0].id, hire.agreed_amount, commissionRate, commission, req.user.id, hire.customer_id]
             );
         }
         
-        res.json({ success: true });
+        await pool.query('COMMIT');
+        
+        console.log(`✅✅✅ Hire request ${id} ${status} successfully!`);
+        
+        res.json({ 
+            success: true, 
+            message: status === 'accepted' 
+                ? 'Hire request accepted! The job has been added to your "My Jobs" tab.' 
+                : 'Hire request declined.',
+            status: status
+        });
+        
     } catch (error) {
-        console.error('Respond to hire error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        await pool.query('ROLLBACK');
+        console.error('❌ Respond to hire error:', error);
+        res.status(500).json({ success: false, error: error.message, message: 'Failed to process request. Please try again.' });
     }
 });
 
