@@ -37,7 +37,7 @@
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
         th { background: rgba(255,255,255,0.05); font-weight: 600; }
         
-        .badge { background: #00e8a0; color: #0f0c29; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .badge { background: #00e8a0; color: #0f0c29; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; }
@@ -45,7 +45,6 @@
         .tab-btn.active { color: #00e8a0; border-bottom: 2px solid #00e8a0; }
         
         .loading { text-align: center; padding: 40px; }
-        .error-message { color: #ef4444; text-align: center; padding: 20px; }
         
         @media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } table { font-size: 12px; } th, td { padding: 8px; } }
     </style>
@@ -63,7 +62,6 @@
     <div class="container">
         <h1 style="margin-bottom: 30px;">💰 Admin Dashboard</h1>
         
-        <!-- Stats Grid -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Total Platform Earnings</h3><div class="value" id="totalEarnings">GHS 0</div><div class="small">Lifetime commission collected</div></div>
             <div class="stat-card"><h3><i class="fas fa-users"></i> Total Users</h3><div class="value" id="totalUsers">0</div><div class="small" id="userBreakdown">Seekers: 0 | Providers: 0</div></div>
@@ -71,7 +69,6 @@
             <div class="stat-card"><h3><i class="fas fa-percent"></i> Commission Rate</h3><div class="value" id="currentRate">10%</div><div class="small">Applied to all transactions</div></div>
         </div>
         
-        <!-- Commission Settings -->
         <div class="card">
             <h2><i class="fas fa-sliders-h"></i> Commission Settings</h2>
             <div class="commission-rate">
@@ -81,54 +78,38 @@
             </div>
         </div>
         
-        <!-- Tabs -->
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('transactions')">Recent Transactions</button>
             <button class="tab-btn" onclick="showTab('users')">All Users</button>
             <button class="tab-btn" onclick="showTab('jobs')">All Jobs</button>
         </div>
         
-        <!-- Transactions Tab -->
         <div id="transactionsTab" class="card">
             <h2><i class="fas fa-history"></i> Recent Commission Transactions</h2>
             <div style="overflow-x: auto;">
                 <table id="transactionsTable">
-                    <thead>
-                        <tr><th>Job Title</th><th>Amount</th><th>Commission</th><th>Provider</th><th>Customer</th><th>Date</th><th>Status</th></tr>
-                    </thead>
-                    <tbody id="transactionsList">
-                        <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
-                    </tbody>
+                    <thead><tr><th>Job Title</th><th>Amount</th><th>Commission</th><th>Provider</th><th>Customer</th><th>Date</th></tr></thead>
+                    <tbody id="transactionsList"><tr><td colspan="6" style="text-align: center;">Loading...</td></tr></tbody>
                 </table>
             </div>
         </div>
         
-        <!-- Users Tab -->
         <div id="usersTab" class="card" style="display: none;">
             <h2><i class="fas fa-users"></i> All Users</h2>
             <div style="overflow-x: auto;">
                 <table id="usersTable">
-                    <thead>
-                        <tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th><th>Status</th></tr>
-                    </thead>
-                    <tbody id="usersList">
-                        <tr><td colspan="8" style="text-align: center;">Loading...</td></tr>
-                    </tbody>
+                    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Joined</th></tr></thead>
+                    <tbody id="usersList"><tr><td colspan="7" style="text-align: center;">Loading...</td></tr></tbody>
                 </table>
             </div>
         </div>
         
-        <!-- Jobs Tab -->
         <div id="jobsTab" class="card" style="display: none;">
             <h2><i class="fas fa-briefcase"></i> All Jobs</h2>
             <div style="overflow-x: auto;">
                 <table id="jobsTable">
-                    <thead>
-                        <tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Status</th><th>Created</th><th>Bids</th></tr>
-                    </thead>
-                    <tbody id="jobsList">
-                        <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
-                    </tbody>
+                    <thead><tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Status</th><th>Created</th><th>Bids</th></tr></thead>
+                    <tbody id="jobsList"><tr><td colspan="7" style="text-align: center;">Loading...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -152,11 +133,16 @@
         } catch(e) {}
         
         async function apiCall(endpoint, options = {}) {
-            const response = await fetch(API_URL + endpoint, {
-                ...options,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-            });
-            return response.json();
+            try {
+                const response = await fetch(API_URL + endpoint, {
+                    ...options,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                return { success: false, error: error.message };
+            }
         }
         
         async function loadDashboard() {
@@ -168,27 +154,23 @@
         
         async function loadStats() {
             try {
-                // Get platform earnings
                 const earnings = await apiCall('/api/commission/earnings');
                 if (earnings.success) {
-                    document.getElementById('totalEarnings').innerHTML = `GHS ${earnings.total_earnings.toLocaleString()}`;
+                    document.getElementById('totalEarnings').innerHTML = `GHS ${(earnings.total_earnings || 0).toLocaleString()}`;
                 }
                 
-                // Get commission rate
                 const rate = await apiCall('/api/commission/rate');
                 if (rate.success) {
-                    document.getElementById('currentRate').innerHTML = `${rate.commission_rate}%`;
-                    document.getElementById('commissionRate').value = rate.commission_rate;
+                    document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`;
+                    document.getElementById('commissionRate').value = rate.commission_rate || 10;
                 }
                 
-                // Get users stats
                 const users = await apiCall('/api/admin/users');
                 if (users.success) {
-                    document.getElementById('totalUsers').innerHTML = users.total;
-                    document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers} | Providers: ${users.providers}`;
+                    document.getElementById('totalUsers').innerHTML = users.total || 0;
+                    document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`;
                 }
                 
-                // Get jobs stats
                 const jobs = await apiCall('/api/admin/jobs/stats');
                 if (jobs.success) {
                     document.getElementById('totalJobs').innerHTML = jobs.completed || 0;
@@ -203,23 +185,22 @@
                 const result = await apiCall('/api/commission/earnings');
                 const tbody = document.getElementById('transactionsList');
                 
-                if (result.success && result.recent_transactions.length > 0) {
+                if (result.success && result.recent_transactions && result.recent_transactions.length > 0) {
                     tbody.innerHTML = result.recent_transactions.map(t => `
                         <tr>
                             <td>${escapeHtml(t.job_title || 'Direct Hire')}</td>
-                            <td>GHS ${t.agreed_amount}</td>
-                            <td style="color: #f59e0b;">GHS ${t.platform_commission}</td>
-                            <td>${escapeHtml(t.provider_name)}</td>
-                            <td>${escapeHtml(t.seeker_name)}</td>
-                            <td>${new Date(t.completed_at).toLocaleDateString()}</td>
-                            <td><span class="badge">Completed</span></td>
+                            <td>GHS ${t.agreed_amount || 0}</td>
+                            <td style="color: #f59e0b;">GHS ${t.platform_commission || 0}</td>
+                            <td>${escapeHtml(t.provider_name || '-')}</td>
+                            <td>${escapeHtml(t.seeker_name || '-')}</td>
+                            <td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td>
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No transactions yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No transactions yet</td></tr>';
                 }
             } catch (error) {
-                document.getElementById('transactionsList').innerHTML = '<tr><td colspan="7" style="text-align: center;">Error loading transactions</td></tr>';
+                document.getElementById('transactionsList').innerHTML = '<tr><td colspan="6" style="text-align: center;">Error loading transactions</td></tr>';
             }
         }
         
@@ -228,7 +209,7 @@
                 const result = await apiCall('/api/admin/users');
                 const tbody = document.getElementById('usersList');
                 
-                if (result.success && result.users.length > 0) {
+                if (result.success && result.users && result.users.length > 0) {
                     tbody.innerHTML = result.users.map(u => `
                         <tr>
                             <td>${u.id}</td>
@@ -238,14 +219,13 @@
                             <td>${u.phone || '-'}</td>
                             <td>${escapeHtml(u.location || '-')}</td>
                             <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                            <td>${u.is_active ? '✅ Active' : '❌ Inactive'}</td>
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No users found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No users found</td></tr>';
                 }
             } catch (error) {
-                document.getElementById('usersList').innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading users</td></tr>';
+                document.getElementById('usersList').innerHTML = '<tr><td colspan="7" style="text-align: center;">Error loading users</td></tr>';
             }
         }
         
@@ -254,13 +234,13 @@
                 const result = await apiCall('/api/admin/jobs');
                 const tbody = document.getElementById('jobsList');
                 
-                if (result.success && result.jobs.length > 0) {
+                if (result.success && result.jobs && result.jobs.length > 0) {
                     tbody.innerHTML = result.jobs.map(j => `
                         <tr>
                             <td>${j.id}</td>
-                            <td>${escapeHtml(j.title || j.service_title || '-')}</td>
+                            <td>${escapeHtml(j.title || '-')}</td>
                             <td>${escapeHtml(j.seeker_name || '-')}</td>
-                            <td>GHS ${j.budget || j.agreed_amount || 0}</td>
+                            <td>GHS ${j.budget || 0}</td>
                             <td><span class="badge">${j.status || 'open'}</span></td>
                             <td>${new Date(j.created_at).toLocaleDateString()}</td>
                             <td>${j.bid_count || 0}</td>
@@ -322,8 +302,6 @@
         }
         
         loadDashboard();
-        
-        // Refresh every 30 seconds
         setInterval(loadDashboard, 30000);
     </script>
 </body>
