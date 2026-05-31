@@ -60,9 +60,6 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
         .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
-        .service-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #e2e8f0; }
-        .service-info { flex: 1; }
-        .service-actions { display: flex; gap: 10px; }
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -267,7 +264,7 @@
             else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY SERVICES (WITH WORKING EDIT/DELETE) ============
+        // ============ MY SERVICES (WITH WORKING EDIT & DELETE) ============
         async function loadMyServices() {
             const services = await apiCall('/api/provider/services');
             const container = document.getElementById('servicesList');
@@ -322,7 +319,6 @@
                 showToast('✅ Service updated successfully!', 'success');
                 closeEditServiceModal();
                 loadMyServices();
-                // Also refresh marketplace if needed
             } else {
                 showToast(result.message || 'Failed to update service', 'error');
             }
@@ -365,15 +361,23 @@
             }
         }
 
+        // WORKING DELETE FUNCTION
         async function deleteService(id) { 
             if (confirm('⚠️ Delete this service? It will be removed from Marketplace.')) { 
                 showToast('Deleting service...', 'info');
-                const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
-                if (result.success) { 
-                    showToast('✅ Service deleted successfully!', 'success'); 
-                    loadMyServices(); 
-                } else { 
-                    showToast(result.message || 'Failed to delete service', 'error'); 
+                try {
+                    const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
+                    console.log('Delete response:', result);
+                    
+                    if (result.success) { 
+                        showToast('✅ Service deleted successfully!', 'success'); 
+                        loadMyServices(); 
+                    } else { 
+                        showToast(result.message || 'Failed to delete service', 'error'); 
+                    }
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showToast('Network error. Please try again.', 'error');
                 }
             } 
         }
