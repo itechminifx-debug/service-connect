@@ -151,25 +151,17 @@
             await loadMyServices(); 
             await loadHireRequests(); 
             await loadStats(); 
-            await loadUnreadCount(); 
         }
 
-        // ============ CHAT FUNCTION FOR PROVIDER ============
         async function startChatWithSeeker(seekerId, jobId = null, directHireId = null) {
             if (!seekerId) {
                 showToast('Customer ID not found', 'error');
                 return;
             }
-            
             const result = await apiCall('/api/conversations/provider', {
                 method: 'POST',
-                body: JSON.stringify({
-                    seeker_id: seekerId,
-                    job_id: jobId,
-                    direct_hire_id: directHireId
-                })
+                body: JSON.stringify({ seeker_id: seekerId, job_id: jobId, direct_hire_id: directHireId })
             });
-            
             if (result.success) {
                 window.location.href = `chat.html?conversation=${result.conversation.id}`;
             } else {
@@ -177,22 +169,6 @@
             }
         }
 
-        async function loadUnreadCount() {
-            try {
-                const result = await apiCall('/api/messages/unread-count');
-                if (result.success && result.unread_count > 0) {
-                    const badge = document.getElementById('unreadBadge');
-                    badge.style.display = 'inline';
-                    badge.textContent = result.unread_count > 9 ? '9+' : result.unread_count;
-                    document.title = `(${result.unread_count}) Service Connect`;
-                } else {
-                    document.getElementById('unreadBadge').style.display = 'none';
-                    document.title = 'Service Connect';
-                }
-            } catch(e) {}
-        }
-
-        // ============ AVAILABLE JOBS ============
         async function loadAvailableJobs() {
             const jobs = await apiCall('/api/jobs');
             const container = document.getElementById('availableJobs');
@@ -208,7 +184,7 @@
                         <input type="number" id="bidDays_${job.id}" class="bid-input" placeholder="Est. days">
                         <div class="button-group">
                             <button class="bid-btn" onclick="placeBid(${job.id})">Place Bid</button>
-                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})" style="background:#8b5cf6;">💬 Ask Question</button>
+                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})">💬 Ask Question</button>
                         </div>
                     </div>
                 </div>
@@ -224,74 +200,46 @@
             else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY BIDS ============
         async function loadMyBids() {
             const bids = await apiCall('/api/provider/bids');
             const container = document.getElementById('myBids');
-            if (!bids || bids.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t placed any bids yet. Browse "Available Jobs" to place bids.</div>'; return; }
+            if (!bids || bids.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t placed any bids yet.</div>'; return; }
             container.innerHTML = bids.map(bid => `<div class="job-card"><span class="job-category">📄 Bid #${bid.id}</span><div class="job-title">${escapeHtml(bid.job_title)}</div><div class="job-details">Your bid: GHS ${bid.amount} | ${bid.estimated_days} days</div><div class="job-details">Status: ${bid.status === 'pending' ? '⏳ Pending' : bid.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}</div><div class="job-budget">💰 Budget: GHS ${bid.job_budget || 'Negotiable'}</div></div>`).join('');
         }
 
-        // ============ MY JOBS ============
         async function loadMyJobs() {
             const jobs = await apiCall('/api/provider/jobs');
             const container = document.getElementById('myJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">You have no accepted jobs yet. Place bids or accept hire requests to get jobs.</div>'; return; }
+            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">You have no accepted jobs yet.</div>'; return; }
             container.innerHTML = jobs.map(job => `
                 <div class="job-card">
                     <span class="job-category">📋 ${job.status === 'completed' ? '✅ Completed' : '🟡 In Progress'}</span>
                     <div class="job-title">${escapeHtml(job.job_title)}</div>
-                    <div class="job-details">💰 Agreed Amount: GHS ${job.agreed_amount}</div>
+                    <div class="job-details">💰 Amount: GHS ${job.agreed_amount}</div>
                     <div class="job-details">👤 Customer: ${escapeHtml(job.seeker_name)}</div>
                     <div class="job-details">📞 Phone: ${job.seeker_phone || 'Not provided'}</div>
-                    <div class="job-details">📅 Started: ${new Date(job.created_at).toLocaleDateString()}</div>
-                    ${job.status === 'completed' ? '<div class="badge-completed" style="margin-top:10px;">✅ Job Completed</div>' : ''}
+                    ${job.status === 'completed' ? '<div class="badge-completed">✅ Completed</div>' : ''}
                     <div class="button-group">
                         ${job.status !== 'completed' ? `<button class="complete-btn" onclick="markJobComplete(${job.id})">✅ Mark Complete</button>` : ''}
-                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})" style="background:#8b5cf6;">💬 Message Customer</button>
+                        <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.job_post_id})">💬 Message Customer</button>
                     </div>
                 </div>
             `).join('');
         }
 
-        // ============ MARK JOB AS COMPLETE ============
         async function markJobComplete(jobId) {
-            const confirmed = confirm('⚠️ Are you sure you want to mark this job as COMPLETE?\n\nOnce marked complete, you cannot undo this action.\n\nThe job will be moved to completed status.');
-            
-            if (!confirmed) {
-                showToast('Job completion cancelled', 'info');
-                return;
-            }
-            
+            if (!confirm('Are you sure you want to mark this job as COMPLETE?')) return;
             showToast('Processing...', 'info');
-            
-            try {
-                const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { 
-                    method: 'PUT', 
-                    body: JSON.stringify({ status: 'completed' }) 
-                });
-                
-                if (result.success) {
-                    showToast('✅ Job marked as complete! Earnings will be added to your account.', 'success');
-                    await loadMyJobs();
-                    await loadStats();
-                    await loadAvailableJobs();
-                    await loadMyBids();
-                } else {
-                    showToast(result.message || '❌ Failed to mark job as complete', 'error');
-                }
-            } catch (error) {
-                console.error('Error marking job complete:', error);
-                showToast('Network error. Please try again.', 'error');
-            }
+            const result = await apiCall(`/api/provider/jobs/${jobId}/status`, { method: 'PUT', body: JSON.stringify({ status: 'completed' }) });
+            if (result.success) { showToast('✅ Job marked as complete!', 'success'); loadMyJobs(); loadStats(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY SERVICES ============
         async function loadMyServices() {
             const services = await apiCall('/api/provider/services');
             const container = document.getElementById('servicesList');
-            if (!services || services.length === 0) { container.innerHTML = '<div class="empty-state">You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; return; }
-            container.innerHTML = services.map(service => `<div class="service-card" style="display:flex; justify-content:space-between; align-items:center;"><div><div class="job-title">${escapeHtml(service.title)}</div><div style="font-size:12px; color:#64748b;">${service.category_name}</div><div class="job-budget">GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div></div><button class="delete-service" onclick="deleteService(${service.id})">Delete</button></div>`).join('');
+            if (!services || services.length === 0) { container.innerHTML = '<div class="empty-state">No services yet. Add your first service below!</div>'; return; }
+            container.innerHTML = services.map(service => `<div class="service-card" style="display:flex; justify-content:space-between; align-items:center;"><div><div class="job-title">${escapeHtml(service.title)}</div><div style="font-size:12px; color:#64748b;">${service.category_name}</div><div class="job-budget">GHS ${service.price || 'Negotiable'}</div></div><button class="delete-service" onclick="deleteService(${service.id})">Delete</button></div>`).join('');
         }
 
         async function addService() {
@@ -308,91 +256,48 @@
 
         async function deleteService(id) { if (confirm('Delete this service?')) { await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); showToast('Service deleted!', 'success'); loadMyServices(); } }
 
-        // ============ HIRE REQUESTS (FIXED) ============
         async function loadHireRequests() {
-            try {
-                const requests = await apiCall('/api/provider/hire-requests');
-                const container = document.getElementById('hireRequests');
-                
-                console.log('Hire requests loaded:', requests);
-                
-                if (!requests || requests.length === 0) { 
-                    container.innerHTML = '<div class="empty-state">🎉 No pending hire requests. When customers hire you directly, requests will appear here.</div>'; 
-                    return; 
-                }
-                
-                container.innerHTML = requests.map(req => `
-                    <div class="hire-card">
-                        <span class="job-category">🔄 Pending Request</span>
-                        <div class="job-title">${escapeHtml(req.service_title)}</div>
-                        <div class="job-details">👤 Customer: ${escapeHtml(req.customer_name)}</div>
-                        <div class="job-details">📞 Phone: ${req.customer_phone || 'Not provided'}</div>
-                        <div class="job-budget">💰 Offered Amount: GHS ${req.agreed_amount}</div>
-                        <div class="job-details">📝 Message: "${escapeHtml(req.message || 'No message')}"</div>
-                        <div class="job-details">📅 Requested: ${new Date(req.created_at).toLocaleDateString()}</div>
-                        <div class="button-group" style="display: flex; gap: 10px; margin-top: 15px;">
-                            <button class="accept-btn" style="flex:1; background: linear-gradient(135deg, #10b981, #059669);" onclick="respondToHire(${req.id}, 'accepted')">
-                                ✅ Accept Job
-                            </button>
-                            <button class="delete-service" style="flex:1;" onclick="respondToHire(${req.id}, 'rejected')">
-                                ❌ Decline
-                            </button>
-                            <button class="chat-btn" onclick="startChatWithSeeker(${req.customer_id}, null, ${req.id})" style="background:#8b5cf6;">💬 Message</button>
-                        </div>
+            const requests = await apiCall('/api/provider/hire-requests');
+            const container = document.getElementById('hireRequests');
+            if (!requests || requests.length === 0) { container.innerHTML = '<div class="empty-state">No hire requests yet.</div>'; return; }
+            container.innerHTML = requests.map(req => `
+                <div class="hire-card">
+                    <span class="job-category">🔄 Pending Request</span>
+                    <div class="job-title">${escapeHtml(req.service_title)}</div>
+                    <div class="job-details">👤 Customer: ${escapeHtml(req.customer_name)}</div>
+                    <div class="job-details">📞 Phone: ${req.customer_phone || 'Not provided'}</div>
+                    <div class="job-budget">💰 Offered: GHS ${req.agreed_amount}</div>
+                    <div class="job-details">📝 "${escapeHtml(req.message || 'No message')}"</div>
+                    <div class="button-group">
+                        <button class="accept-btn" onclick="respondToHire(${req.id}, 'accepted')">Accept</button>
+                        <button class="delete-service" onclick="respondToHire(${req.id}, 'rejected')">Decline</button>
+                        <button class="chat-btn" onclick="startChatWithSeeker(${req.customer_id}, null, ${req.id})">💬 Message</button>
                     </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error loading hire requests:', error);
-                document.getElementById('hireRequests').innerHTML = '<div class="empty-state">⚠️ Error loading requests. Please refresh.</div>';
-            }
+                </div>
+            `).join('');
         }
 
-        // ============ RESPOND TO HIRE (FIXED) ============
         async function respondToHire(hireId, status) {
-            console.log(`📝 Responding to hire ${hireId} with status: ${status}`);
-            
             showToast('Processing...', 'info');
-            
-            try {
-                const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { 
-                    method: 'PUT', 
-                    body: JSON.stringify({ status }) 
-                });
-                
-                console.log('Response:', result);
-                
-                if (result.success) {
-                    if (status === 'accepted') {
-                        showToast('✅ Hire request accepted! Job added to "My Jobs".', 'success');
-                    } else {
-                        showToast('✅ Hire request declined.', 'success');
-                    }
-                    // Refresh all sections
-                    await loadHireRequests();
-                    await loadMyJobs();
-                    await loadStats();
-                } else {
-                    showToast(result.message || 'Failed to respond to hire request', 'error');
-                }
-            } catch (error) {
-                console.error('Error responding to hire:', error);
-                showToast('Network error. Please try again.', 'error');
+            const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
+            if (result.success) { 
+                showToast(status === 'accepted' ? '✅ Hire request accepted!' : '✅ Hire request declined', 'success'); 
+                loadHireRequests(); 
+                loadMyJobs(); 
+                loadStats();
+            } else { 
+                showToast(result.message || 'Failed to respond', 'error'); 
             }
         }
 
-        // ============ STATS ============
         async function loadStats() {
-            try {
-                const stats = await apiCall('/api/dashboard/stats');
-                document.getElementById('statsGrid').innerHTML = `
-                    <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
-                    <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
-                    <div class="stat-card"><div class="stat-info"><h4>Earnings</h4><div class="stat-number">GHS ${(stats.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
-                    <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
-                `;
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
+            const stats = await apiCall('/api/dashboard/stats');
+            document.getElementById('statsGrid').innerHTML = `
+                <div class="stat-card"><div class="stat-info"><h4>Total Jobs</h4><div class="stat-number">${stats.total_jobs || 0}</div></div><div class="stat-icon">📋</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Earnings</h4><div class="stat-number">GHS ${(stats.total_earnings || 0).toLocaleString()}</div></div><div class="stat-icon">💰</div></div>
+                <div class="stat-card"><div class="stat-info"><h4>Bids</h4><div class="stat-number">${stats.total_bids || 0}</div></div><div class="stat-icon">📝</div></div>
+            `;
         }
 
         function showTab(tab) {
@@ -414,13 +319,8 @@
         }
         
         function logout() { localStorage.clear(); window.location.href = 'index.html'; }
-        
-        function escapeHtml(str) { 
-            if (!str) return ''; 
-            return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
-        }
+        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
-        setInterval(loadUnreadCount, 10000);
         loadCategories(); 
         loadDashboard();
     </script>
