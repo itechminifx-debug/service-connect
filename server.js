@@ -318,7 +318,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     try {
         const result = await pool.query(
-            'SELECT id, email, password_hash, full_name, user_type FROM users WHERE email = $1',
+            'SELECT id, email, password_hash, full_name, user_type, is_active FROM users WHERE email = $1',
             [email]
         );
         
@@ -327,6 +327,12 @@ app.post('/api/auth/login', async (req, res) => {
         }
         
         const user = result.rows[0];
+        
+        // Check if user is active
+        if (!user.is_active) {
+            return res.status(401).json({ success: false, message: 'Your account has been deactivated. Please contact support.' });
+        }
+        
         const isValid = await bcrypt.compare(password, user.password_hash);
         
         if (!isValid) {
