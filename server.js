@@ -1488,6 +1488,120 @@ app.get('/api/reviews/pending', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== PROVIDER SERVICES (COMPLETE CRUD) ====================
+
+// GET all services for a provider
+app.get('/api/provider/services', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') return res.status(403).json([]);
+    
+    try {
+        const result = await pool.query(
+            `SELECT ps.*, c.name as category_name
+             FROM provider_services ps
+             JOIN categories c ON ps.category_id = c.id
+             WHERE ps.provider_id = $1 AND ps.is_active = true
+             ORDER BY ps.created_at DESC`,
+            [req.user.id]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get services error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ADD a new service
+app.post('/api/provider/services', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
+    
+    const { category_id, title, description, price, price_type, experience_years } = req.body;
+    
+    if (!category_id || !title) {
+        return res.status(400).json({ success: false, message: 'Category and title are required' });
+    }
+    
+    try {
+        const result = await pool.query(
+            `INSERT INTO provider_services (provider_id, category_id, title, description, price, price_type, experience_years, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+             RETURNING *`,
+            [req.user.id, category_id, title, description, price, price_type, experience_years || 0]
+        );
+        res.json({ success: true, service: result.rows[0] });
+    } catch (error) {
+        console.error('Add service error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// EDIT/UPDATE a service (FIXED)
+app.put('/api/provider/services/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
+    
+    const { id } = req.params;
+    const { title, description, price, price_type } = req.body;
+    
+    try {
+        // Verify the service belongs to this provider
+        const verifyResult = await pool.query(
+            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
+            [id, req.user.id]
+        );
+        
+        if (verifyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
+        }
+        
+        // Update the service
+        const result = await pool.query(
+            `UPDATE provider_services 
+             SET title = COALESCE($1, title),
+                 description = COALESCE($2, description),
+                 price = COALESCE($3, price),
+                 price_type = COALESCE($4, price_type)
+             WHERE id = $5 AND provider_id = $6
+             RETURNING *`,
+            [title, description, price, price_type, id, req.user.id]
+        );
+        
+        console.log(`✅ Service ${id} updated by provider ${req.user.id}`);
+        res.json({ success: true, service: result.rows[0] });
+    } catch (error) {
+        console.error('Update service error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// DELETE a service (FIXED)
+app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') return res.status(403).json({ success: false });
+    
+    const { id } = req.params;
+    
+    try {
+        // Verify the service belongs to this provider
+        const verifyResult = await pool.query(
+            'SELECT id FROM provider_services WHERE id = $1 AND provider_id = $2',
+            [id, req.user.id]
+        );
+        
+        if (verifyResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Service not found or not yours' });
+        }
+        
+        // Soft delete - set is_active to false
+        await pool.query(
+            'UPDATE provider_services SET is_active = false WHERE id = $1 AND provider_id = $2',
+            [id, req.user.id]
+        );
+        
+        console.log(`✅ Service ${id} deleted by provider ${req.user.id}`);
+        res.json({ success: true, message: 'Service deleted successfully' });
+    } catch (error) {
+        console.error('Delete service error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
