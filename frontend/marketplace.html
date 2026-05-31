@@ -28,11 +28,15 @@
         .provider-name { font-size: 14px; color: #64748b; margin-bottom: 10px; }
         .service-price { font-weight: 700; color: #f59e0b; font-size: 20px; margin: 10px 0; }
         .hire-btn { width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .edit-service-btn { width: 100%; background: linear-gradient(135deg, #f59e0b, #e67e22); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .delete-service-btn { width: 100%; background: #ef4444; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
         .modal-content input, .modal-content textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
+        .info-banner { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
         @media (max-width: 768px) { .navbar { flex-direction: column; } .services-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -40,17 +44,28 @@
     <nav class="navbar">
         <div class="logo">Service<span>Connect</span></div>
         <div class="nav-links">
-            <a href="seeker-dashboard.html" class="nav-link">📋 Dashboard</a>
+            <a href="#" id="dashboardLink" class="nav-link">📋 Dashboard</a>
             <a href="#" class="nav-link active">🛒 Marketplace</a>
             <a href="chat.html" class="nav-link">💬 Messages</a>
         </div>
         <div class="user-info">
-            <span id="userName">Customer</span>
+            <span id="userName">User</span>
+            <span id="userTypeBadge" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px;"></span>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </nav>
 
     <div class="container">
+        <!-- Provider Info Banner -->
+        <div id="providerBanner" class="info-banner" style="display: none;">
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. You can see your own services here. Customers (Seekers) can see and hire your services.
+        </div>
+        
+        <!-- Seeker Info Banner -->
+        <div id="seekerBanner" class="info-banner" style="display: none; background: linear-gradient(135deg, #10b981, #059669);">
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse services and hire providers directly.
+        </div>
+
         <div class="filters">
             <select id="categoryFilter" class="filter-select"><option value="">All Categories</option></select>
             <input type="text" id="locationFilter" class="filter-input" placeholder="Location">
@@ -59,10 +74,39 @@
             <button class="search-btn" onclick="loadServices()">🔍 Search</button>
         </div>
         
-        <div id="servicesGrid" class="services-grid"><div class="empty-state" style="text-align:center; padding:60px;">Loading services...</div></div>
+        <div id="servicesGrid" class="services-grid"><div class="empty-state">Loading services...</div></div>
     </div>
 
-    <div id="hireModal" class="modal"><div class="modal-content"><h3 style="margin-bottom:20px;">📝 Hire Provider</h3><input type="number" id="hireAmount" placeholder="Agreed Amount (GHS)"><textarea id="hireMessage" rows="3" placeholder="Message to provider..."></textarea><button class="hire-btn" onclick="confirmHire()">Send Hire Request</button><button onclick="closeModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button></div></div>
+    <!-- Edit Service Modal -->
+    <div id="editServiceModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">✏️ Edit Your Service</h3>
+            <input type="text" id="editServiceTitle" placeholder="Service Title">
+            <textarea id="editServiceDescription" rows="3" placeholder="Service Description"></textarea>
+            <input type="number" id="editServicePrice" placeholder="Price (GHS)">
+            <select id="editServicePriceType">
+                <option value="fixed">Fixed Price</option>
+                <option value="hourly">Hourly Rate</option>
+                <option value="negotiable">Negotiable</option>
+            </select>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="hire-btn" onclick="updateService()" style="background:#f59e0b;">Save Changes</button>
+                <button onclick="closeEditModal()" style="flex:1; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hire Modal (Only for Seekers) -->
+    <div id="hireModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">📝 Hire Provider</h3>
+            <input type="number" id="hireAmount" placeholder="Agreed Amount (GHS)">
+            <textarea id="hireMessage" rows="3" placeholder="Message to provider..."></textarea>
+            <button class="hire-btn" onclick="confirmHire()">Send Hire Request</button>
+            <button onclick="closeHireModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
     <script>
@@ -70,15 +114,23 @@
         let token = localStorage.getItem('token');
         let user = null;
         let selectedService = null;
+        let currentEditServiceId = null;
         
         if (!token) window.location.href = 'index.html';
+        
         try { 
             user = JSON.parse(localStorage.getItem('user')); 
-            document.getElementById('userName').innerText = user?.full_name || 'Customer';
+            document.getElementById('userName').innerText = user?.full_name || 'User';
+            document.getElementById('userTypeBadge').innerText = user?.user_type === 'seeker' ? 'Customer' : 'Provider';
             
-            // IMPORTANT: Redirect PROVIDERS away from marketplace
-            if (user && user.user_type === 'provider') {
-                window.location.href = 'provider-dashboard.html';
+            // Set dashboard link based on user type
+            const dashboardLink = document.getElementById('dashboardLink');
+            if (user?.user_type === 'seeker') {
+                dashboardLink.href = 'seeker-dashboard.html';
+                document.getElementById('seekerBanner').style.display = 'block';
+            } else {
+                dashboardLink.href = 'provider-dashboard.html';
+                document.getElementById('providerBanner').style.display = 'block';
             }
         } catch(e) {}
         
@@ -108,43 +160,154 @@
             const services = await apiCall(url);
             const container = document.getElementById('servicesGrid');
             
-            if (!services || services.length === 0) { container.innerHTML = '<div class="empty-state">No services found. Try different filters!</div>'; return; }
+            if (!services || services.length === 0) { 
+                container.innerHTML = '<div class="empty-state">No services found. Try different filters!</div>'; 
+                return; 
+            }
             
-            container.innerHTML = services.map(service => `
-                <div class="service-card">
-                    <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                    <div class="service-title">${escapeHtml(service.title)}</div>
-                    <div class="provider-name"><i class="fas fa-user"></i> ${escapeHtml(service.provider_name)}</div>
-                    <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
-                    <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                    <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
-                    <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
-                </div>
-            `).join('');
+            // For providers: filter to show only their own services
+            let displayServices = services;
+            if (user?.user_type === 'provider') {
+                displayServices = services.filter(s => s.provider_id === user.id);
+            }
+            
+            if (displayServices.length === 0) {
+                if (user?.user_type === 'provider') {
+                    container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Go to your Dashboard → My Services to add your first service!</div>';
+                } else {
+                    container.innerHTML = '<div class="empty-state">No services found. Try different filters!</div>';
+                }
+                return;
+            }
+            
+            container.innerHTML = displayServices.map(service => {
+                const isMyService = user?.user_type === 'provider' && service.provider_id === user.id;
+                
+                if (isMyService) {
+                    // Provider view - can edit/delete their own services
+                    return `
+                        <div class="service-card" style="border: 2px solid #8b5cf6;">
+                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                            <span class="my-service-badge"><i class="fas fa-user-check"></i> Your Service</span>
+                            <div class="service-title">${escapeHtml(service.title)}</div>
+                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                            <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button class="edit-service-btn" onclick="openEditModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
+                                <button class="delete-service-btn" onclick="deleteMyService(${service.id})">🗑️ Delete</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Seeker view - can hire
+                    return `
+                        <div class="service-card">
+                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                            <div class="service-title">${escapeHtml(service.title)}</div>
+                            <div class="provider-name"><i class="fas fa-user"></i> ${escapeHtml(service.provider_name)}</div>
+                            <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
+                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                            <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                            <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
+                        </div>
+                    `;
+                }
+            }).join('');
+        }
+        
+        function openEditModal(id, title, description, price, priceType) {
+            currentEditServiceId = id;
+            document.getElementById('editServiceTitle').value = title;
+            document.getElementById('editServiceDescription').value = description;
+            document.getElementById('editServicePrice').value = price;
+            document.getElementById('editServicePriceType').value = priceType;
+            document.getElementById('editServiceModal').style.display = 'flex';
+        }
+        
+        async function updateService() {
+            const title = document.getElementById('editServiceTitle').value;
+            const description = document.getElementById('editServiceDescription').value;
+            const price = document.getElementById('editServicePrice').value;
+            const price_type = document.getElementById('editServicePriceType').value;
+            
+            const result = await apiCall(`/api/provider/services/${currentEditServiceId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ title, description, price, price_type })
+            });
+            
+            if (result.success) {
+                showToast('Service updated successfully!', 'success');
+                closeEditModal();
+                loadServices();
+            } else {
+                showToast(result.message || 'Failed to update', 'error');
+            }
+        }
+        
+        async function deleteMyService(serviceId) {
+            if (confirm('Are you sure you want to delete this service?')) {
+                const result = await apiCall(`/api/provider/services/${serviceId}`, { method: 'DELETE' });
+                if (result.success) {
+                    showToast('Service deleted successfully!', 'success');
+                    loadServices();
+                } else {
+                    showToast('Failed to delete service', 'error');
+                }
+            }
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editServiceModal').style.display = 'none';
+            currentEditServiceId = null;
         }
         
         function openHireModal(serviceId, providerId, serviceTitle) {
+            if (user?.user_type === 'provider') {
+                showToast('Providers cannot hire services. This feature is for customers only.', 'error');
+                return;
+            }
             selectedService = { serviceId, providerId, serviceTitle };
             document.getElementById('hireModal').style.display = 'flex';
             document.getElementById('hireAmount').value = '';
             document.getElementById('hireMessage').value = '';
         }
         
+        function closeHireModal() {
+            document.getElementById('hireModal').style.display = 'none';
+        }
+        
         async function confirmHire() {
+            if (user?.user_type === 'provider') {
+                showToast('Providers cannot hire services.', 'error');
+                closeHireModal();
+                return;
+            }
+            
             const amount = document.getElementById('hireAmount').value;
             const message = document.getElementById('hireMessage').value;
             if (!amount || amount <= 0) { showToast('Please enter a valid amount', 'error'); return; }
             const result = await apiCall('/api/direct-hire', { method: 'POST', body: JSON.stringify({ service_id: selectedService.serviceId, provider_id: selectedService.providerId, agreed_amount: parseFloat(amount), message: message }) });
-            if (result.success) { showToast('Hire request sent successfully!', 'success'); closeModal(); }
+            if (result.success) { showToast('Hire request sent successfully!', 'success'); closeHireModal(); }
             else { showToast(result.message || 'Failed to send hire request', 'error'); }
         }
         
-        function closeModal() { document.getElementById('hireModal').style.display = 'none'; }
-        function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
-        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
-        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+        function showToast(msg, type) { 
+            const t = document.getElementById('toast'); 
+            t.textContent = msg; 
+            t.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; 
+            t.style.display = 'block'; 
+            setTimeout(() => t.style.display = 'none', 3000); 
+        }
         
-        loadCategories(); loadServices();
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+        
+        function escapeHtml(str) { 
+            if (!str) return ''; 
+            return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
+        }
+        
+        loadCategories(); 
+        loadServices();
     </script>
 </body>
 </html>
