@@ -76,6 +76,7 @@
 
         <div class="stats-grid" id="statsGrid"></div>
 
+        <!-- Post a Job Form -->
         <div class="post-job-form">
             <div class="form-title">📝 Post a New Job</div>
             <div class="form-row">
@@ -91,14 +92,20 @@
             <button class="btn-primary" onclick="postJob()">Post Job →</button>
         </div>
 
+        <!-- Tabs -->
         <div class="tabs">
             <button class="tab active" onclick="showTab('postedJobs')">📋 My Posted Jobs</button>
             <button class="tab" onclick="showTab('directHires')">🔄 Direct Hires</button>
             <button class="tab" onclick="showTab('bids')">📩 Received Bids</button>
         </div>
 
+        <!-- My Posted Jobs Tab -->
         <div id="postedJobs" class="cards-grid"></div>
+
+        <!-- Direct Hires Tab -->
         <div id="directHires" style="display: none;" class="cards-grid"></div>
+
+        <!-- Received Bids Tab -->
         <div id="bids" style="display: none;" class="cards-grid"></div>
     </div>
 
@@ -127,14 +134,37 @@
             document.getElementById('jobCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
         }
 
-        async function loadDashboard() { await loadPostedJobs(); await loadDirectHires(); await loadBids(); await loadStats(); }
+        async function loadDashboard() { 
+            await loadPostedJobs(); 
+            await loadDirectHires(); 
+            await loadBids(); 
+            await loadStats(); 
+        }
 
         async function postJob() {
             const category_id = document.getElementById('jobCategory').value;
             const title = document.getElementById('jobTitle').value;
             const description = document.getElementById('jobDescription').value;
-            if (!category_id || !title || !description) { showToast('Fill category, title, and description', 'error'); return; }
-            const result = await apiCall('/api/jobs', { method: 'POST', body: JSON.stringify({ category_id, title, description, budget: document.getElementById('jobBudget').value, location: document.getElementById('jobLocation').value, preferred_date: document.getElementById('jobDate').value }) });
+            
+            if (!category_id || !title || !description) { 
+                showToast('Fill category, title, and description', 'error'); 
+                return; 
+            }
+            
+            showToast('Posting job...', 'info');
+            
+            const result = await apiCall('/api/jobs', { 
+                method: 'POST', 
+                body: JSON.stringify({ 
+                    category_id, 
+                    title, 
+                    description, 
+                    budget: document.getElementById('jobBudget').value, 
+                    location: document.getElementById('jobLocation').value, 
+                    preferred_date: document.getElementById('jobDate').value 
+                }) 
+            });
+            
             if (result.success) {
                 showToast('Job posted!', 'success');
                 document.getElementById('jobTitle').value = ''; 
@@ -145,18 +175,24 @@
                 loadPostedJobs(); 
                 loadStats();
             } else { 
-                showToast(result.message || 'Failed', 'error'); 
+                showToast(result.message || 'Failed to post job', 'error'); 
             }
         }
 
+        // MY POSTED JOBS - FIXED
         async function loadPostedJobs() {
             try {
+                console.log('Loading posted jobs...');
                 const jobs = await apiCall('/api/jobs/my');
+                console.log('Jobs response:', jobs);
+                
                 const container = document.getElementById('postedJobs');
+                
                 if (!jobs || jobs.length === 0) { 
                     container.innerHTML = '<div class="empty-state">📋 No jobs posted yet. Post your first job above!</div>'; 
                     return; 
                 }
+                
                 container.innerHTML = jobs.map(job => `
                     <div class="job-card">
                         <span class="job-category">${getCategoryIcon(job.category_name)} ${job.category_name}</span>
@@ -165,7 +201,8 @@
                         <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
                         <div class="job-details">📍 ${job.location || 'Location not specified'} | 👁️ ${job.views || 0} views</div>
                         <div class="job-details">Status: ${job.status === 'open' ? '<span class="badge-pending">🟢 Open</span>' : job.status === 'assigned' ? '<span class="badge-accepted">🟡 Assigned</span>' : '<span class="badge-completed">🔵 Completed</span>'}</div>
-                        ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">View Bids (${job.bid_count || 0})</button>` : ''}
+                        ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">📩 View Bids (${job.bid_count || 0})</button>` : ''}
+                        <button class="accept-btn" onclick="startChatWithProvider(null, ${job.id})" style="background:#8b5cf6; margin-top: 5px;">💬 Messages</button>
                     </div>
                 `).join('');
             } catch (error) {
@@ -174,63 +211,111 @@
             }
         }
 
-        async function loadDirectHires() {
-            const hires = await apiCall('/api/seeker/direct-hires');
-            const container = document.getElementById('directHires');
-            if (!hires || hires.length === 0) { container.innerHTML = '<div class="empty-state">🔄 No direct hires yet. Browse the Marketplace to hire providers directly!</div>'; return; }
-            container.innerHTML = hires.map(hire => `
-                <div class="hire-card">
-                    <span class="job-category">🛒 Direct Hire</span>
-                    <div class="job-title">${escapeHtml(hire.service_title)}</div>
-                    <div class="job-details">Provider: ${escapeHtml(hire.provider_name)} ⭐ ${hire.provider_rating || 'New'}</div>
-                    <div class="job-budget">💰 Amount: GHS ${hire.agreed_amount}</div>
-                    <div class="job-details">📝 "${escapeHtml(hire.message || 'No message')}"</div>
-                    <div class="job-details">Status: ${hire.status === 'pending' ? '<span class="badge-pending">⏳ Pending Provider Response</span>' : hire.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted - In Progress</span>' : '<span class="badge-completed">❌ Declined</span>'}</div>
-                    <div class="job-details">📅 Hired on: ${new Date(hire.created_at).toLocaleDateString()}</div>
-                </div>
-            `).join('');
+        async function startChatWithProvider(providerId, jobId) {
+            showToast('Opening chat...', 'info');
+            window.location.href = `chat.html?job=${jobId}`;
         }
 
-        async function loadBids() {
-            const myJobs = await apiCall('/api/jobs/my');
-            let allBids = [];
-            for (const job of myJobs) {
-                const bids = await apiCall(`/api/jobs/${job.id}/bids`);
-                if (bids && bids.length > 0) allBids.push(...bids.map(bid => ({ ...bid, job_title: job.title, job_id: job.id, job_budget: job.budget })));
+        // DIRECT HIRES
+        async function loadDirectHires() {
+            try {
+                const hires = await apiCall('/api/seeker/direct-hires');
+                const container = document.getElementById('directHires');
+                
+                if (!hires || hires.length === 0) { 
+                    container.innerHTML = '<div class="empty-state">🔄 No direct hires yet. Browse the Marketplace to hire providers directly!</div>'; 
+                    return; 
+                }
+                
+                container.innerHTML = hires.map(hire => `
+                    <div class="hire-card">
+                        <span class="job-category">🛒 Direct Hire</span>
+                        <div class="job-title">${escapeHtml(hire.service_title)}</div>
+                        <div class="job-details">Provider: ${escapeHtml(hire.provider_name)} ⭐ ${hire.provider_rating || 'New'}</div>
+                        <div class="job-budget">💰 Amount: GHS ${hire.agreed_amount}</div>
+                        <div class="job-details">📝 "${escapeHtml(hire.message || 'No message')}"</div>
+                        <div class="job-details">Status: ${hire.status === 'pending' ? '<span class="badge-pending">⏳ Pending Provider Response</span>' : hire.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted - In Progress</span>' : '<span class="badge-completed">❌ Declined</span>'}</div>
+                        <div class="job-details">📅 Hired on: ${new Date(hire.created_at).toLocaleDateString()}</div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading direct hires:', error);
+                document.getElementById('directHires').innerHTML = '<div class="empty-state">Error loading direct hires.</div>';
             }
-            const container = document.getElementById('bids');
-            if (allBids.length === 0) { container.innerHTML = '<div class="empty-state">📩 No bids received yet. Post a job to receive bids from providers!</div>'; return; }
-            container.innerHTML = allBids.map(bid => `
-                <div class="bid-card">
-                    <span class="job-category">📝 Bid Received</span>
-                    <div class="job-title">${escapeHtml(bid.job_title)}</div>
-                    <div class="bid-provider">Provider: ${escapeHtml(bid.provider_name)} ⭐ ${bid.provider_rating || 'New'}</div>
-                    <div class="bid-amount">💰 Bid: GHS ${bid.amount}</div>
-                    <div class="job-details">⏱️ ${bid.estimated_days} day(s) | 📝 "${escapeHtml(bid.message || 'No message')}"</div>
-                    <div class="job-details">Your Budget: GHS ${bid.job_budget || 'Negotiable'}</div>
-                    ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">Accept Bid (GHS ${bid.amount})</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
-                </div>
-            `).join('');
+        }
+
+        // RECEIVED BIDS
+        async function loadBids() {
+            try {
+                const myJobs = await apiCall('/api/jobs/my');
+                let allBids = [];
+                
+                for (const job of myJobs) {
+                    const bids = await apiCall(`/api/jobs/${job.id}/bids`);
+                    if (bids && bids.length > 0) {
+                        allBids.push(...bids.map(bid => ({ 
+                            ...bid, 
+                            job_title: job.title, 
+                            job_id: job.id, 
+                            job_budget: job.budget 
+                        })));
+                    }
+                }
+                
+                const container = document.getElementById('bids');
+                
+                if (allBids.length === 0) { 
+                    container.innerHTML = '<div class="empty-state">📩 No bids received yet. Post a job to receive bids from providers!</div>'; 
+                    return; 
+                }
+                
+                container.innerHTML = allBids.map(bid => `
+                    <div class="bid-card">
+                        <span class="job-category">📝 Bid Received</span>
+                        <div class="job-title">${escapeHtml(bid.job_title)}</div>
+                        <div class="bid-provider">Provider: ${escapeHtml(bid.provider_name)} ⭐ ${bid.provider_rating || 'New'}</div>
+                        <div class="bid-amount">💰 Bid: GHS ${bid.amount}</div>
+                        <div class="job-details">⏱️ ${bid.estimated_days} day(s) | 📝 "${escapeHtml(bid.message || 'No message')}"</div>
+                        <div class="job-details">Your Budget: GHS ${bid.job_budget || 'Negotiable'}</div>
+                        ${bid.status === 'pending' ? `<button class="accept-btn" onclick="acceptBid(${bid.id}, ${bid.job_id}, ${bid.amount})">✅ Accept Bid (GHS ${bid.amount})</button>` : `<div class="job-details">Status: ${bid.status === 'accepted' ? '<span class="badge-accepted">✅ Accepted</span>' : '<span class="badge-pending">⏳ Pending</span>'}</div>`}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading bids:', error);
+                document.getElementById('bids').innerHTML = '<div class="empty-state">Error loading bids.</div>';
+            }
         }
 
         async function acceptBid(bidId, jobId, amount) {
             if (confirm(`Accept this bid of GHS ${amount}?`)) {
+                showToast('Accepting bid...', 'info');
                 const result = await apiCall(`/api/bids/${bidId}/accept`, { method: 'PUT' });
-                if (result.success) { showToast('Bid accepted! Provider notified.', 'success'); loadPostedJobs(); loadBids(); loadStats(); }
-                else { showToast(result.message || 'Failed', 'error'); }
+                if (result.success) { 
+                    showToast('Bid accepted! Provider notified.', 'success'); 
+                    loadPostedJobs(); 
+                    loadBids(); 
+                    loadStats(); 
+                } else { 
+                    showToast(result.message || 'Failed', 'error'); 
+                }
             }
         }
 
         async function loadStats() {
-            const postedJobs = await apiCall('/api/jobs/my');
-            const directHires = await apiCall('/api/seeker/direct-hires');
-            const stats = await apiCall('/api/dashboard/stats');
-            document.getElementById('statsGrid').innerHTML = `
-                <div class="stat-card"><div class="stat-info"><h4>Jobs Posted</h4><div class="stat-number">${postedJobs?.length || 0}</div></div><div class="stat-icon">📋</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Direct Hires</h4><div class="stat-number">${directHires?.length || 0}</div></div><div class="stat-icon">🛒</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Bids Received</h4><div class="stat-number">${stats.total_bids_received || 0}</div></div><div class="stat-icon">📝</div></div>
-                <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
-            `;
+            try {
+                const postedJobs = await apiCall('/api/jobs/my');
+                const directHires = await apiCall('/api/seeker/direct-hires');
+                const stats = await apiCall('/api/dashboard/stats');
+                
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="stat-card"><div class="stat-info"><h4>Jobs Posted</h4><div class="stat-number">${postedJobs?.length || 0}</div></div><div class="stat-icon">📋</div></div>
+                    <div class="stat-card"><div class="stat-info"><h4>Direct Hires</h4><div class="stat-number">${directHires?.length || 0}</div></div><div class="stat-icon">🛒</div></div>
+                    <div class="stat-card"><div class="stat-info"><h4>Bids Received</h4><div class="stat-number">${stats.total_bids_received || 0}</div></div><div class="stat-icon">📝</div></div>
+                    <div class="stat-card"><div class="stat-info"><h4>Completed</h4><div class="stat-number">${stats.completed_jobs || 0}</div></div><div class="stat-icon">✅</div></div>
+                `;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
         }
 
         function getCategoryIcon(name) {
@@ -239,13 +324,7 @@
         }
 
         function viewBids(jobId) { 
-            // Switch to bids tab
-            document.getElementById('postedJobs').style.display = 'none';
-            document.getElementById('directHires').style.display = 'none';
-            document.getElementById('bids').style.display = 'grid';
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab')[2].classList.add('active');
-            loadBids();
+            showTab('bids'); 
             showToast(`Viewing bids for job #${jobId}`, 'info'); 
         }
         
@@ -274,8 +353,33 @@
             return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
         }
 
+        // Add this to fix chat starting
+        async function startChatWithProvider(providerId, jobId) {
+            if (!providerId) {
+                showToast('Provider ID not found', 'error');
+                return;
+            }
+            const result = await apiCall('/api/conversations', {
+                method: 'POST',
+                body: JSON.stringify({ provider_id: providerId, job_id: jobId })
+            });
+            if (result.success) {
+                window.location.href = `chat.html?conversation=${result.conversation.id}`;
+            } else {
+                showToast(result.message || 'Failed to start chat', 'error');
+            }
+        }
+
         loadCategories(); 
         loadDashboard();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (document.getElementById('postedJobs').style.display !== 'none') loadPostedJobs();
+            if (document.getElementById('directHires').style.display !== 'none') loadDirectHires();
+            if (document.getElementById('bids').style.display !== 'none') loadBids();
+            loadStats();
+        }, 30000);
     </script>
 </body>
 </html>
