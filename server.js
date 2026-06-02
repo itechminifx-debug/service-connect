@@ -1206,6 +1206,7 @@ app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
     res.json({ success: true, conversation });
 });
 
+// Send message with tracking
 app.post('/api/messages', authenticateToken, async (req, res) => {
     const { conversation_id, receiver_id, message } = req.body;
     
@@ -1223,11 +1224,15 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
             conversation = await getOrCreateConversation(seekerId, providerId);
         }
         
+        // Get IP and user agent for tracking
+        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        
         const result = await pool.query(
-            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [conversation.id, req.user.id, receiverId, message]
+            [conversation.id, req.user.id, receiverId, message, ipAddress, userAgent]
         );
         
         await pool.query(
@@ -1237,8 +1242,18 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
             [message, conversation.id]
         );
         
+        // Update analytics
+        await pool.query(`
+            INSERT INTO chat_analytics (date, total_messages, unique_conversations)
+            VALUES (CURRENT_DATE, 1, 1)
+            ON CONFLICT (date) DO UPDATE SET
+                total_messages = chat_analytics.total_messages + 1,
+                unique_conversations = chat_analytics.unique_conversations + 1
+        `);
+        
         res.json({ success: true, message: result.rows[0] });
     } catch (error) {
+        console.error('Send message error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
