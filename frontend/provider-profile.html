@@ -22,7 +22,6 @@
         
         .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
         
-        /* Profile Header */
         .profile-header { background: white; border-radius: 24px; overflow: hidden; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .cover-photo { height: 200px; background: linear-gradient(135deg, #667eea, #764ba2); position: relative; }
         .profile-avatar { position: absolute; bottom: -50px; left: 40px; width: 120px; height: 120px; background: white; border-radius: 50%; padding: 4px; }
@@ -37,17 +36,14 @@
         .stat-number { font-size: 24px; font-weight: 700; color: #1e293b; }
         .stat-label { font-size: 12px; color: #64748b; }
         
-        /* Rating Stars */
         .rating-stars { display: inline-flex; align-items: center; gap: 4px; }
         .rating-stars i { color: #f59e0b; font-size: 16px; }
         .rating-number { font-weight: 600; margin-left: 8px; }
         
-        /* Tabs */
         .tabs { display: flex; gap: 12px; margin-bottom: 25px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; flex-wrap: wrap; }
         .tab { padding: 10px 24px; background: none; border: none; font-weight: 600; cursor: pointer; border-radius: 8px; transition: all 0.3s; }
         .tab.active { background: linear-gradient(135deg, #00c8ff, #00e8a0); color: #0f0c29; }
         
-        /* Cards Grid */
         .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
         .service-card, .review-card, .portfolio-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: transform 0.3s; }
         .service-card:hover, .review-card:hover, .portfolio-card:hover { transform: translateY(-3px); }
@@ -63,22 +59,12 @@
         .review-date { font-size: 11px; color: #94a3b8; }
         .review-comment { color: #475569; line-height: 1.5; margin-top: 10px; }
         
-        .portfolio-card img { width: 100%; height: 200px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; background: #e2e8f0; }
-        .portfolio-title { font-weight: 600; margin-bottom: 5px; }
-        .portfolio-actions { display: flex; gap: 10px; margin-top: 10px; }
-        .delete-portfolio-btn { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; }
-        
-        .contact-btn { background: #00c8ff; color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-        
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
-        .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
-        
         .button-group { display: flex; gap: 10px; margin-top: 15px; }
         .button-group button { flex: 1; }
-        .upload-btn { background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .loading-state { text-align: center; padding: 60px; }
+        .loading-state i { font-size: 40px; color: #00c8ff; }
         
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .profile-avatar { left: 50%; transform: translateX(-50%); } .profile-info { text-align: center; } .profile-meta { justify-content: center; } }
     </style>
@@ -100,57 +86,9 @@
 
     <div class="container">
         <div id="profileContent">
-            <div class="loading-state" style="text-align: center; padding: 60px;">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <div class="loading-state">
+                <i class="fas fa-spinner fa-spin"></i>
                 <p>Loading profile...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Contact Modal -->
-    <div id="contactModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom: 20px;">📧 Contact Provider</h3>
-            <input type="text" id="contactName" placeholder="Your Name *">
-            <input type="email" id="contactEmail" placeholder="Your Email *">
-            <input type="tel" id="contactPhone" placeholder="Your Phone (optional)">
-            <textarea id="contactMessage" rows="4" placeholder="Your message... *"></textarea>
-            <button class="hire-btn" onclick="sendContactMessage()">Send Message</button>
-            <button onclick="closeContactModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
-        </div>
-    </div>
-
-    <!-- Portfolio Modal -->
-    <div id="portfolioModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom: 20px;">📸 Add Portfolio Item</h3>
-            <input type="text" id="portfolioTitle" placeholder="Title *">
-            <textarea id="portfolioDescription" rows="3" placeholder="Description"></textarea>
-            <input type="url" id="portfolioImageUrl" placeholder="Image URL (optional)">
-            <p style="font-size: 12px; color: #64748b; margin-bottom: 15px;">For now, you can paste an image URL. File upload coming soon!</p>
-            <button class="hire-btn" onclick="addPortfolioItem()">Add to Portfolio</button>
-            <button onclick="closePortfolioModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
-        </div>
-    </div>
-
-    <!-- Edit Profile Modal -->
-    <div id="editProfileModal" class="modal">
-        <div class="modal-content">
-            <h3 style="margin-bottom: 20px;">✏️ Edit Your Profile</h3>
-            <textarea id="editBio" rows="4" placeholder="Bio / About Me"></textarea>
-            <input type="text" id="editCompanyName" placeholder="Company Name">
-            <input type="number" id="editYearsExperience" placeholder="Years of Experience">
-            <select id="editResponseTime">
-                <option value="Within 1 hour">Within 1 hour</option>
-                <option value="Within 2 hours">Within 2 hours</option>
-                <option value="Within 12 hours">Within 12 hours</option>
-                <option value="Within 24 hours">Within 24 hours</option>
-                <option value="Within 48 hours">Within 48 hours</option>
-            </select>
-            <input type="text" id="editLocation" placeholder="Location">
-            <div class="button-group">
-                <button class="hire-btn" onclick="saveProfileEdit()">Save Changes</button>
-                <button onclick="closeEditProfileModal()" style="background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
             </div>
         </div>
     </div>
@@ -165,12 +103,11 @@
         let currentTab = 'services';
         let isOwner = false;
 
-        // Get provider ID from URL
         const urlParams = new URLSearchParams(window.location.search);
         const providerId = urlParams.get('id');
 
         if (!providerId) {
-            window.location.href = 'marketplace.html';
+            document.getElementById('profileContent').innerHTML = '<div class="empty-state">❌ No provider ID specified. Please use: provider-profile.html?id=123</div>';
         }
 
         try {
@@ -203,40 +140,68 @@
             return response.json();
         }
 
-        async function loadProfile() {
-            const result = await apiCall(`/api/provider/${providerId}/profile`);
+        // FIXED: Function to format rating safely
+        function formatRating(rating) {
+            const numRating = parseFloat(rating);
+            if (isNaN(numRating) || numRating === 0) return 'New';
+            return numRating.toFixed(1);
+        }
+
+        // FIXED: Function to render stars
+        function renderStars(rating) {
+            const numRating = parseFloat(rating) || 0;
             
-            if (!result.success) {
-                document.getElementById('profileContent').innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-user-slash fa-3x"></i>
-                        <p>Provider not found</p>
-                        <a href="marketplace.html" class="contact-btn" style="display: inline-block; margin-top: 20px;">Back to Marketplace</a>
-                    </div>
-                `;
-                return;
+            if (numRating === 0) {
+                return '<i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i>';
             }
             
-            currentProviderId = result.provider.id;
-            displayProfile(result);
+            const fullStars = Math.floor(numRating);
+            const halfStar = numRating % 1 >= 0.5;
+            let stars = '';
+            for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
+            if (halfStar) stars += '<i class="fas fa-star-half-alt"></i>';
+            for (let i = 0; i < 5 - fullStars - (halfStar ? 1 : 0); i++) stars += '<i class="far fa-star"></i>';
+            
+            return stars;
+        }
+
+        async function loadProfile() {
+            try {
+                const result = await apiCall(`/api/provider/${providerId}/profile`);
+                console.log('Profile data:', result);
+                
+                if (!result.success) {
+                    document.getElementById('profileContent').innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-user-slash fa-3x"></i>
+                            <p>${result.message || 'Provider not found'}</p>
+                            <a href="marketplace.html" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #00c8ff; color: white; text-decoration: none; border-radius: 12px;">Back to Marketplace</a>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                currentProviderId = result.provider.id;
+                displayProfile(result);
+            } catch (error) {
+                console.error('Error loading profile:', error);
+                document.getElementById('profileContent').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle fa-3x"></i>
+                        <p>Error loading profile: ${error.message}</p>
+                        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #00c8ff; color: white; border: none; border-radius: 12px;">Retry</button>
+                    </div>
+                `;
+            }
         }
 
         function displayProfile(data) {
             const provider = data.provider;
-            const services = data.services;
-            const reviews = data.reviews;
-            const portfolio = data.portfolio;
-            const stats = data.stats;
+            const services = data.services || [];
+            const reviews = data.reviews || [];
+            const stats = data.stats || {};
             
-            const rating = provider.rating || 0;
-            const fullStars = Math.floor(rating);
-            const hasHalfStar = rating % 1 >= 0.5;
-            
-            let starsHtml = '';
-            for (let i = 0; i < fullStars; i++) starsHtml += '<i class="fas fa-star"></i>';
-            if (hasHalfStar) starsHtml += '<i class="fas fa-star-half-alt"></i>';
-            for (let i = 0; i < 5 - fullStars - (hasHalfStar ? 1 : 0); i++) starsHtml += '<i class="far fa-star"></i>';
-            
+            const rating = parseFloat(provider.rating) || 0;
             const memberDate = new Date(provider.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
             
             document.getElementById('profileContent').innerHTML = `
@@ -244,14 +209,14 @@
                     <div class="cover-photo"></div>
                     <div class="profile-avatar">
                         <div class="profile-avatar-img">
-                            ${provider.full_name.charAt(0)}
+                            ${provider.full_name ? provider.full_name.charAt(0) : 'P'}
                         </div>
                     </div>
                     <div class="profile-info">
                         <div class="profile-name">
-                            ${escapeHtml(provider.full_name)}
+                            ${escapeHtml(provider.full_name || 'Provider')}
                             ${provider.verified ? '<span class="verified-badge"><i class="fas fa-check-circle"></i> Verified</span>' : ''}
-                            ${isOwner ? '<button class="edit-profile-btn" onclick="openEditProfileModal()" style="margin-left: 15px;"><i class="fas fa-edit"></i> Edit Profile</button>' : ''}
+                            ${isOwner ? `<button class="edit-profile-btn" onclick="window.location.href='provider-profile-edit.html'"><i class="fas fa-edit"></i> Edit Profile</button>` : ''}
                         </div>
                         <div class="profile-meta">
                             <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(provider.location || 'Location not specified')}</span>
@@ -260,7 +225,7 @@
                             ${provider.company_name ? `<span><i class="fas fa-building"></i> ${escapeHtml(provider.company_name)}</span>` : ''}
                         </div>
                         <div class="rating-stars">
-                            ${starsHtml}
+                            ${renderStars(rating)}
                             <span class="rating-number">${rating.toFixed(1)} (${provider.total_reviews || 0} reviews)</span>
                         </div>
                         ${provider.bio ? `<div class="profile-bio">${escapeHtml(provider.bio)}</div>` : ''}
@@ -269,18 +234,12 @@
                             <div class="stat-item"><div class="stat-number">${stats.completed_jobs || 0}</div><div class="stat-label">Jobs Completed</div></div>
                             <div class="stat-item"><div class="stat-number">${services.length}</div><div class="stat-label">Services</div></div>
                         </div>
-                        <div class="button-group" style="margin-top: 20px;">
-                            <button class="message-btn" onclick="openContactModal()"><i class="fas fa-envelope"></i> Contact Provider</button>
-                            ${!isOwner && user?.user_type === 'seeker' ? `<button class="hire-btn" onclick="hireProvider()"><i class="fas fa-handshake"></i> Hire Now</button>` : ''}
-                            ${isOwner ? `<button class="upload-btn" onclick="openPortfolioModal()"><i class="fas fa-plus"></i> Add Portfolio</button>` : ''}
-                        </div>
                     </div>
                 </div>
                 
                 <div class="tabs">
                     <button class="tab ${currentTab === 'services' ? 'active' : ''}" onclick="showTab('services')">📋 Services (${services.length})</button>
                     <button class="tab ${currentTab === 'reviews' ? 'active' : ''}" onclick="showTab('reviews')">⭐ Reviews (${reviews.length})</button>
-                    <button class="tab ${currentTab === 'portfolio' ? 'active' : ''}" onclick="showTab('portfolio')">📸 Portfolio (${portfolio.length})</button>
                 </div>
                 
                 <div id="servicesTab" class="cards-grid" style="${currentTab !== 'services' ? 'display: none;' : ''}">
@@ -302,24 +261,11 @@
                                 <div class="reviewer-avatar">${review.reviewer_name?.charAt(0) || 'U'}</div>
                                 <div>
                                     <div class="reviewer-name">${escapeHtml(review.reviewer_name)}</div>
-                                    <div class="rating-stars">
-                                        ${Array(review.rating).fill('<i class="fas fa-star"></i>').join('')}${Array(5-review.rating).fill('<i class="far fa-star"></i>').join('')}
-                                    </div>
+                                    <div class="rating-stars">${renderStars(review.rating)}</div>
                                     <div class="review-date">${new Date(review.created_at).toLocaleDateString()}</div>
                                 </div>
                             </div>
                             <div class="review-comment">${escapeHtml(review.comment || 'No comment provided.')}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                
-                <div id="portfolioTab" class="cards-grid" style="${currentTab !== 'portfolio' ? 'display: none;' : ''}">
-                    ${portfolio.length === 0 ? '<div class="empty-state">No portfolio items yet.</div>' : portfolio.map(item => `
-                        <div class="portfolio-card">
-                            ${item.image_url ? `<img src="${item.image_url}" alt="${escapeHtml(item.title)}" onerror="this.src='https://placehold.co/400x200?text=No+Image'">` : '<div style="height:200px; background:linear-gradient(135deg, #667eea, #764ba2); border-radius:12px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image fa-3x" style="color:white;"></i></div>'}
-                            <div class="portfolio-title">${escapeHtml(item.title)}</div>
-                            <div class="portfolio-description" style="font-size:13px; color:#64748b;">${escapeHtml(item.description || '')}</div>
-                            ${isOwner ? `<div class="portfolio-actions"><button class="delete-portfolio-btn" onclick="deletePortfolioItem(${item.id})"><i class="fas fa-trash"></i> Delete</button></div>` : ''}
                         </div>
                     `).join('')}
                 </div>
@@ -330,133 +276,8 @@
             currentTab = tab;
             document.getElementById('servicesTab').style.display = tab === 'services' ? 'grid' : 'none';
             document.getElementById('reviewsTab').style.display = tab === 'reviews' ? 'grid' : 'none';
-            document.getElementById('portfolioTab').style.display = tab === 'portfolio' ? 'grid' : 'none';
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             event.target.classList.add('active');
-        }
-
-        function openContactModal() {
-            document.getElementById('contactModal').style.display = 'flex';
-            document.getElementById('contactName').value = user?.full_name || '';
-            document.getElementById('contactEmail').value = user?.email || '';
-            document.getElementById('contactPhone').value = '';
-            document.getElementById('contactMessage').value = '';
-        }
-
-        function closeContactModal() {
-            document.getElementById('contactModal').style.display = 'none';
-        }
-
-        async function sendContactMessage() {
-            const name = document.getElementById('contactName').value;
-            const email = document.getElementById('contactEmail').value;
-            const phone = document.getElementById('contactPhone').value;
-            const message = document.getElementById('contactMessage').value;
-            
-            if (!name || !email || !message) {
-                showToast('Please fill in all required fields', 'error');
-                return;
-            }
-            
-            const result = await apiCall(`/api/provider/${currentProviderId}/contact`, {
-                method: 'POST',
-                body: JSON.stringify({ name, email, phone, message })
-            });
-            
-            if (result.success) {
-                showToast('Message sent successfully!', 'success');
-                closeContactModal();
-            } else {
-                showToast(result.message || 'Failed to send message', 'error');
-            }
-        }
-
-        function openPortfolioModal() {
-            document.getElementById('portfolioModal').style.display = 'flex';
-            document.getElementById('portfolioTitle').value = '';
-            document.getElementById('portfolioDescription').value = '';
-            document.getElementById('portfolioImageUrl').value = '';
-        }
-
-        function closePortfolioModal() {
-            document.getElementById('portfolioModal').style.display = 'none';
-        }
-
-        async function addPortfolioItem() {
-            const title = document.getElementById('portfolioTitle').value;
-            const description = document.getElementById('portfolioDescription').value;
-            const image_url = document.getElementById('portfolioImageUrl').value;
-            
-            if (!title) {
-                showToast('Title is required', 'error');
-                return;
-            }
-            
-            const result = await apiCall('/api/provider/portfolio', {
-                method: 'POST',
-                body: JSON.stringify({ title, description, image_url })
-            });
-            
-            if (result.success) {
-                showToast('Portfolio item added!', 'success');
-                closePortfolioModal();
-                loadProfile();
-            } else {
-                showToast(result.message || 'Failed to add portfolio item', 'error');
-            }
-        }
-
-        async function deletePortfolioItem(id) {
-            if (confirm('Delete this portfolio item?')) {
-                const result = await apiCall(`/api/provider/portfolio/${id}`, { method: 'DELETE' });
-                if (result.success) {
-                    showToast('Portfolio item deleted', 'success');
-                    loadProfile();
-                } else {
-                    showToast('Failed to delete', 'error');
-                }
-            }
-        }
-
-        function openEditProfileModal() {
-            const provider = currentProviderData;
-            document.getElementById('editBio').value = provider?.bio || '';
-            document.getElementById('editCompanyName').value = provider?.company_name || '';
-            document.getElementById('editYearsExperience').value = provider?.years_experience || '';
-            document.getElementById('editResponseTime').value = provider?.response_time || 'Within 24 hours';
-            document.getElementById('editLocation').value = provider?.location || '';
-            document.getElementById('editProfileModal').style.display = 'flex';
-        }
-
-        function closeEditProfileModal() {
-            document.getElementById('editProfileModal').style.display = 'none';
-        }
-
-        async function saveProfileEdit() {
-            const profileData = {
-                bio: document.getElementById('editBio').value,
-                company_name: document.getElementById('editCompanyName').value,
-                years_experience: parseInt(document.getElementById('editYearsExperience').value) || 0,
-                response_time: document.getElementById('editResponseTime').value,
-                location: document.getElementById('editLocation').value
-            };
-            
-            const result = await apiCall('/api/provider/profile', {
-                method: 'PUT',
-                body: JSON.stringify(profileData)
-            });
-            
-            if (result.success) {
-                showToast('Profile updated successfully!', 'success');
-                closeEditProfileModal();
-                loadProfile();
-            } else {
-                showToast(result.message || 'Failed to update profile', 'error');
-            }
-        }
-
-        function hireProvider() {
-            window.location.href = `marketplace.html?provider=${currentProviderId}`;
         }
 
         function hireService(serviceId, providerId) {
@@ -481,7 +302,6 @@
             return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
         }
 
-        let currentProviderData = null;
         loadProfile();
     </script>
 </body>
