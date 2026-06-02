@@ -28,7 +28,11 @@
         .provider-name { font-size: 14px; color: #64748b; margin-bottom: 10px; }
         .service-price { font-weight: 700; color: #f59e0b; font-size: 20px; margin: 10px 0; }
         .hire-btn { width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
-        .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
+        .profile-link { display: inline-block; margin-top: 10px; color: #8b5cf6; text-decoration: none; font-size: 13px; font-weight: 500; }
+        .profile-link:hover { text-decoration: underline; }
+        .rating-stars { margin: 8px 0; }
+        .rating-stars i { color: #f59e0b; font-size: 14px; }
+        .rating-text { font-size: 13px; color: #64748b; margin-left: 5px; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
@@ -54,14 +58,12 @@
     </nav>
 
     <div class="container">
-        <!-- Provider Info Banner -->
         <div id="providerBanner" class="info-banner" style="display: none;">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. Your services are displayed below. To edit or delete services, go to your Dashboard → My Services.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. Your services are displayed below. Click "View Profile" to see your public profile.
         </div>
         
-        <!-- Seeker Info Banner -->
         <div id="seekerBanner" class="info-banner" style="display: none; background: linear-gradient(135deg, #10b981, #059669);">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse services and hire providers directly.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse services and hire providers directly. Click provider names to view their full profile.
         </div>
 
         <div class="filters">
@@ -101,7 +103,6 @@
             document.getElementById('userName').innerText = user?.full_name || 'User';
             document.getElementById('userTypeBadge').innerText = user?.user_type === 'seeker' ? 'Customer' : 'Provider';
             
-            // Set dashboard link based on user type
             const dashboardLink = document.getElementById('dashboardLink');
             if (user?.user_type === 'seeker') {
                 dashboardLink.href = 'seeker-dashboard.html';
@@ -121,6 +122,17 @@
             const categories = await apiCall('/api/categories');
             const select = document.getElementById('categoryFilter');
             select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+        }
+        
+        function renderStars(rating) {
+            if (!rating || rating === 0) return '<i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i> <span class="rating-text">No reviews yet</span>';
+            const fullStars = Math.floor(rating);
+            const halfStar = rating % 1 >= 0.5;
+            let stars = '';
+            for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
+            if (halfStar) stars += '<i class="fas fa-star-half-alt"></i>';
+            for (let i = 0; i < 5 - fullStars - (halfStar ? 1 : 0); i++) stars += '<i class="far fa-star"></i>';
+            return `${stars} <span class="rating-text">${rating.toFixed(1)} (${service.total_reviews || 0} reviews)</span>`;
         }
         
         async function loadServices() {
@@ -143,7 +155,6 @@
                 return; 
             }
             
-            // For providers: filter to show only their own services
             let displayServices = services;
             if (user?.user_type === 'provider') {
                 displayServices = services.filter(s => s.provider_id === user.id);
@@ -159,30 +170,34 @@
             }
             
             if (user?.user_type === 'provider') {
-                // PROVIDER VIEW - Read only, no edit/delete buttons
                 container.innerHTML = displayServices.map(service => `
                     <div class="service-card" style="border: 2px solid #8b5cf6;">
                         <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                        <span class="my-service-badge"><i class="fas fa-user-check"></i> Your Service</span>
+                        <span style="display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px;"><i class="fas fa-user-check"></i> Your Service</span>
                         <div class="service-title">${escapeHtml(service.title)}</div>
                         <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
                         <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                        <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-external-link-alt"></i> View My Public Profile</a>
                         <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e2e8f0; text-align: center; color: #8b5cf6; font-size: 12px;">
                             <i class="fas fa-info-circle"></i> To edit or delete this service, go to Dashboard → My Services
                         </div>
                     </div>
                 `).join('');
             } else {
-                // SEEKER VIEW - Can hire
                 container.innerHTML = displayServices.map(service => `
                     <div class="service-card">
                         <span class="service-category">${service.category_icon} ${service.category_name}</span>
                         <div class="service-title">${escapeHtml(service.title)}</div>
-                        <div class="provider-name"><i class="fas fa-user"></i> ${escapeHtml(service.provider_name)}</div>
+                        <div class="provider-name">
+                            <i class="fas fa-user"></i> 
+                            <a href="provider-profile.html?id=${service.provider_id}" style="color: #8b5cf6; text-decoration: none; font-weight: 500;">${escapeHtml(service.provider_name)}</a>
+                            <span style="font-size:12px; color:#64748b; margin-left:5px;">⭐ ${service.provider_rating?.toFixed(1) || 'New'}</span>
+                        </div>
                         <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
                         <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
                         <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
                         <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
+                        <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
                     </div>
                 `).join('');
             }
