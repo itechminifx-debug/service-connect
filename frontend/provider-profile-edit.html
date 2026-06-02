@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Profile | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; }
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 22px; font-weight: 700; }
+        .logo span { color: #00c8ff; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; }
+        .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+        .card { background: white; border-radius: 20px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h1 { margin-bottom: 30px; color: #1e293b; }
+        h2 { margin-bottom: 20px; color: #1e293b; font-size: 18px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; color: #1e293b; }
+        input, textarea, select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #00c8ff; }
+        .btn-primary { background: linear-gradient(135deg, #00c8ff, #00e8a0); color: #0f0c29; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; width: 100%; }
+        .btn-secondary { background: #e2e8f0; color: #1e293b; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Service<span>Connect</span></div>
+        <div class="nav-links">
+            <a href="provider-dashboard.html" class="nav-link">📊 Dashboard</a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+            <a href="provider-profile.html?id=${user?.id}" class="nav-link">👤 View Profile</a>
+        </div>
+        <div class="user-info">
+            <span id="userName">Provider</span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1><i class="fas fa-user-edit"></i> Edit Your Profile</h1>
+        
+        <div class="card">
+            <h2>📝 Basic Information</h2>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="fullName" placeholder="Your full name">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email" placeholder="Your email" readonly style="background:#f1f5f9;">
+            </div>
+            <div class="form-group">
+                <label>Phone Number</label>
+                <input type="tel" id="phone" placeholder="Your phone number">
+            </div>
+            <div class="form-group">
+                <label>Location</label>
+                <input type="text" id="location" placeholder="e.g., Accra, Ghana">
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🏢 Professional Information</h2>
+            <div class="form-group">
+                <label>Company Name (Optional)</label>
+                <input type="text" id="companyName" placeholder="Your company or business name">
+            </div>
+            <div class="form-group">
+                <label>Years of Experience</label>
+                <input type="number" id="yearsExperience" placeholder="e.g., 5">
+            </div>
+            <div class="form-group">
+                <label>Response Time</label>
+                <select id="responseTime">
+                    <option value="Within 1 hour">Within 1 hour</option>
+                    <option value="Within 2 hours">Within 2 hours</option>
+                    <option value="Within 12 hours">Within 12 hours</option>
+                    <option value="Within 24 hours">Within 24 hours</option>
+                    <option value="Within 48 hours">Within 48 hours</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Bio / About Me</label>
+                <textarea id="bio" rows="5" placeholder="Tell customers about yourself, your experience, and your services..."></textarea>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 15px; margin-top: 20px;">
+            <button class="btn-primary" onclick="saveProfile()">💾 Save Changes</button>
+            <button class="btn-secondary" onclick="window.location.href='provider-profile.html?id=' + userId">👤 View My Profile</button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_URL = '';
+        let token = localStorage.getItem('token');
+        let user = null;
+        let userId = null;
+
+        if (!token) window.location.href = 'index.html';
+        try {
+            user = JSON.parse(localStorage.getItem('user'));
+            userId = user.id;
+            document.getElementById('userName').innerText = user?.full_name || 'Provider';
+        } catch(e) {}
+
+        async function apiCall(endpoint, options = {}) {
+            const response = await fetch(API_URL + endpoint, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            return response.json();
+        }
+
+        async function loadProfile() {
+            try {
+                const result = await apiCall('/api/provider/my-profile');
+                if (result.success) {
+                    const p = result.profile;
+                    document.getElementById('fullName').value = p.full_name || '';
+                    document.getElementById('email').value = p.email || '';
+                    document.getElementById('phone').value = p.phone || '';
+                    document.getElementById('location').value = p.location || '';
+                    document.getElementById('companyName').value = p.company_name || '';
+                    document.getElementById('yearsExperience').value = p.years_experience || 0;
+                    document.getElementById('responseTime').value = p.response_time || 'Within 24 hours';
+                    document.getElementById('bio').value = p.bio || '';
+                }
+            } catch (error) {
+                console.error('Error loading profile:', error);
+            }
+        }
+
+        async function saveProfile() {
+            const profileData = {
+                full_name: document.getElementById('fullName').value,
+                phone: document.getElementById('phone').value,
+                location: document.getElementById('location').value,
+                company_name: document.getElementById('companyName').value,
+                years_experience: parseInt(document.getElementById('yearsExperience').value) || 0,
+                response_time: document.getElementById('responseTime').value,
+                bio: document.getElementById('bio').value
+            };
+
+            showToast('Saving profile...', 'info');
+
+            const result = await apiCall('/api/provider/profile', {
+                method: 'PUT',
+                body: JSON.stringify(profileData)
+            });
+
+            if (result.success) {
+                showToast('Profile updated successfully!', 'success');
+                setTimeout(() => {
+                    window.location.href = `provider-profile.html?id=${userId}`;
+                }, 1500);
+            } else {
+                showToast(result.message || 'Failed to update profile', 'error');
+            }
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        loadProfile();
+    </script>
+</body>
+</html>
