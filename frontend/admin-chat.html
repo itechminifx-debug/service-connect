@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Chat Management | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #1e293b; }
+        
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 22px; font-weight: 700; }
+        .logo span { color: #00e8a0; }
+        .nav-links { display: flex; gap: 15px; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; transition: background 0.3s; cursor: pointer; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .stat-card h3 { font-size: 14px; color: #64748b; margin-bottom: 10px; }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: #1e293b; }
+        
+        .card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 20px; }
+        .card h2 { margin-bottom: 15px; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        
+        .search-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-bar input { flex: 1; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; }
+        .search-bar button { padding: 12px 24px; background: #00c8ff; border: none; border-radius: 12px; color: white; cursor: pointer; }
+        
+        .conversations-list { max-height: 600px; overflow-y: auto; }
+        .conversation-item { padding: 15px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: background 0.2s; }
+        .conversation-item:hover { background: #f1f5f9; }
+        .conversation-item.active { background: #e0f2fe; border-left: 3px solid #00c8ff; }
+        .conv-users { font-weight: 600; margin-bottom: 5px; }
+        .conv-last-msg { font-size: 13px; color: #64748b; }
+        .conv-time { font-size: 11px; color: #94a3b8; margin-top: 5px; }
+        
+        .chat-view { border-left: 1px solid #e2e8f0; padding-left: 20px; }
+        .messages-container { max-height: 500px; overflow-y: auto; padding: 10px; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 12px; }
+        .message-sent { background: #e0f2fe; margin-left: 20px; }
+        .message-received { background: #f1f5f9; margin-right: 20px; }
+        .message-sender { font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+        .message-text { font-size: 14px; }
+        .message-time { font-size: 10px; color: #94a3b8; margin-top: 5px; text-align: right; }
+        .flag-btn { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 12px; margin-top: 5px; }
+        
+        .badge { background: #10b981; color: white; padding: 4px 8px; border-radius: 12px; font-size: 11px; }
+        .badge-danger { background: #ef4444; }
+        
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        
+        .flex { display: flex; gap: 20px; }
+        .sidebar { width: 40%; }
+        .main { flex: 1; }
+        
+        @media (max-width: 768px) { .flex { flex-direction: column; } .sidebar { width: 100%; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Service<span>Connect</span> <span class="badge">Admin</span></div>
+        <div class="nav-links">
+            <a href="admin-dashboard.html" class="nav-link">💰 Earnings</a>
+            <a href="admin-chat.html" class="nav-link active">💬 Chat Monitor</a>
+            <a href="index.html" class="nav-link">🏠 Home</a>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </nav>
+
+    <div class="container">
+        <h1 style="margin-bottom: 20px;">💬 Chat Monitoring Dashboard</h1>
+        
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><h3><i class="fas fa-comments"></i> Total Conversations</h3><div class="value" id="totalConv">0</div></div>
+            <div class="stat-card"><h3><i class="fas fa-envelope"></i> Total Messages</h3><div class="value" id="totalMsg">0</div></div>
+            <div class="stat-card"><h3><i class="fas fa-users"></i> Active Users</h3><div class="value" id="activeUsers">0</div></div>
+            <div class="stat-card"><h3><i class="fas fa-flag"></i> Flagged Messages</h3><div class="value" id="flaggedMsg">0</div></div>
+        </div>
+        
+        <div class="card">
+            <h2><i class="fas fa-search"></i> Conversations</h2>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Search by user name or email...">
+                <button onclick="loadConversations()"><i class="fas fa-search"></i> Search</button>
+            </div>
+            <div class="flex">
+                <div class="sidebar">
+                    <div class="conversations-list" id="conversationsList">
+                        <div class="empty-state" style="padding: 40px; text-align: center;">Loading conversations...</div>
+                    </div>
+                </div>
+                <div class="main chat-view" id="chatView" style="display: none;">
+                    <div class="messages-container" id="messagesContainer"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_URL = '';
+        let token = localStorage.getItem('token');
+        let user = null;
+        let currentConversation = null;
+
+        if (!token) window.location.href = 'index.html';
+        try {
+            user = JSON.parse(localStorage.getItem('user'));
+            if (user?.user_type !== 'admin') { alert('Admin access required'); window.location.href = 'index.html'; }
+        } catch(e) {}
+
+        async function apiCall(endpoint, options = {}) {
+            const response = await fetch(API_URL + endpoint, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            return response.json();
+        }
+
+        async function loadStats() {
+            try {
+                const result = await apiCall('/api/admin/chat-analytics');
+                if (result.success && result.overall) {
+                    document.getElementById('totalConv').innerText = result.overall.total_conversations || 0;
+                    document.getElementById('totalMsg').innerText = result.overall.total_messages || 0;
+                    document.getElementById('activeUsers').innerText = result.overall.active_users || 0;
+                    document.getElementById('flaggedMsg').innerText = result.overall.flagged_messages || 0;
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function loadConversations() {
+            const search = document.getElementById('searchInput').value;
+            let url = '/api/admin/conversations?limit=100';
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            
+            const result = await apiCall(url);
+            const container = document.getElementById('conversationsList');
+            
+            if (result.success && result.conversations && result.conversations.length > 0) {
+                container.innerHTML = result.conversations.map(conv => `
+                    <div class="conversation-item" onclick="selectConversation(${conv.id})">
+                        <div class="conv-users">
+                            <i class="fas fa-user"></i> ${escapeHtml(conv.seeker_name)} (Seeker) 
+                            ↔ 
+                            <i class="fas fa-user-tie"></i> ${escapeHtml(conv.provider_name)} (Provider)
+                        </div>
+                        <div class="conv-last-msg">💬 ${escapeHtml(conv.last_message?.substring(0, 50) || 'No messages')}${conv.last_message?.length > 50 ? '...' : ''}</div>
+                        <div class="conv-time">📅 ${new Date(conv.updated_at).toLocaleString()}</div>
+                        <div class="conv-time">📨 ${conv.message_count} messages</div>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<div class="empty-state" style="padding: 40px; text-align: center;">No conversations found</div>';
+            }
+        }
+
+        async function selectConversation(conversationId) {
+            currentConversation = conversationId;
+            const result = await apiCall(`/api/admin/conversations/${conversationId}/messages`);
+            
+            if (result.success) {
+                const conversation = result.conversation;
+                const messages = result.messages;
+                
+                document.getElementById('chatView').style.display = 'block';
+                
+                const container = document.getElementById('messagesContainer');
+                container.innerHTML = messages.map(msg => `
+                    <div class="message ${msg.sender_type === 'seeker' ? 'message-received' : 'message-sent'}">
+                        <div class="message-sender">
+                            <strong>${escapeHtml(msg.sender_name)}</strong> (${msg.sender_type === 'seeker' ? 'Customer' : 'Provider'})
+                            ${msg.is_flagged ? '<span class="badge badge-danger" style="margin-left: 10px;">⚠️ Flagged</span>' : ''}
+                        </div>
+                        <div class="message-text">${escapeHtml(msg.message)}</div>
+                        <div class="message-time">${new Date(msg.created_at).toLocaleString()}</div>
+                        ${!msg.is_flagged ? `<button class="flag-btn" onclick="flagMessage(${msg.id})"><i class="fas fa-flag"></i> Report</button>` : ''}
+                        <button class="flag-btn" onclick="deleteMessage(${msg.id})" style="color: #ef4444; margin-left: 10px;"><i class="fas fa-trash"></i> Delete</button>
+                    </div>
+                `).join('');
+                
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function flagMessage(messageId) {
+            const reason = prompt('Please provide a reason for flagging this message:');
+            if (!reason) return;
+            
+            const result = await apiCall(`/api/messages/${messageId}/flag`, {
+                method: 'POST',
+                body: JSON.stringify({ reason })
+            });
+            
+            if (result.success) {
+                showToast('Message reported successfully', 'success');
+                selectConversation(currentConversation);
+            } else {
+                showToast(result.message || 'Failed to report', 'error');
+            }
+        }
+
+        async function deleteMessage(messageId) {
+            if (!confirm('Are you sure you want to delete this message? This action cannot be undone.')) return;
+            
+            const result = await apiCall(`/api/admin/messages/${messageId}`, { method: 'DELETE' });
+            
+            if (result.success) {
+                showToast('Message deleted', 'success');
+                selectConversation(currentConversation);
+            } else {
+                showToast('Failed to delete', 'error');
+            }
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+
+        loadStats();
+        loadConversations();
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
