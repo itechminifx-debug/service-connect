@@ -149,15 +149,22 @@
             }
         }
         
+        // FIXED: renderStars function without optional chaining issues
         function renderStars(rating) {
-            if (!rating || rating === 0) return '<i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i> <span class="rating-text">No reviews yet</span>';
-            const fullStars = Math.floor(rating);
-            const halfStar = rating % 1 >= 0.5;
+            const numRating = parseFloat(rating) || 0;
+            
+            if (numRating === 0) {
+                return '<i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i><i class="far fa-star" style="color:#cbd5e1;"></i> <span class="rating-text">No reviews yet</span>';
+            }
+            
+            const fullStars = Math.floor(numRating);
+            const halfStar = numRating % 1 >= 0.5;
             let stars = '';
             for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
             if (halfStar) stars += '<i class="fas fa-star-half-alt"></i>';
             for (let i = 0; i < 5 - fullStars - (halfStar ? 1 : 0); i++) stars += '<i class="far fa-star"></i>';
-            return `${stars} <span class="rating-text">${rating.toFixed(1)}</span>`;
+            
+            return `${stars} <span class="rating-text">${numRating.toFixed(1)}</span>`;
         }
         
         async function loadServices() {
@@ -210,23 +217,26 @@
                 
             } else {
                 // SEEKER VIEW - Show ALL services
-                container.innerHTML = services.map(service => `
-                    <div class="service-card">
-                        <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                        <div class="service-title">${escapeHtml(service.title)}</div>
-                        <div class="provider-name">
-                            <i class="fas fa-user"></i> 
-                            <a href="provider-profile.html?id=${service.provider_id}" style="color: #8b5cf6; text-decoration: none; font-weight: 500;">${escapeHtml(service.provider_name)}</a>
-                            <span style="font-size:12px; color:#64748b; margin-left:5px;">⭐ ${service.provider_rating?.toFixed(1) || 'New'}</span>
+                container.innerHTML = services.map(service => {
+                    const ratingValue = service.provider_rating ? parseFloat(service.provider_rating).toFixed(1) : 'New';
+                    return `
+                        <div class="service-card">
+                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                            <div class="service-title">${escapeHtml(service.title)}</div>
+                            <div class="provider-name">
+                                <i class="fas fa-user"></i> 
+                                <a href="provider-profile.html?id=${service.provider_id}" style="color: #8b5cf6; text-decoration: none; font-weight: 500;">${escapeHtml(service.provider_name)}</a>
+                                <span style="font-size:12px; color:#64748b; margin-left:5px;">⭐ ${ratingValue}</span>
+                            </div>
+                            <div class="rating-stars">${renderStars(service.provider_rating)}</div>
+                            <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
+                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                            <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
+                            <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
+                            <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
                         </div>
-                        <div class="rating-stars">${renderStars(service.provider_rating)}</div>
-                        <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
-                        <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                        <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
-                        <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
-                        <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
         }
         
