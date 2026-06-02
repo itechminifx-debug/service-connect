@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provider Profile | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #1e293b; }
+        
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 22px; font-weight: 700; }
+        .logo span { color: #00c8ff; }
+        .nav-links { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; transition: background 0.3s; cursor: pointer; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        .user-info { display: flex; align-items: center; gap: 20px; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
+        
+        /* Profile Header */
+        .profile-header { background: white; border-radius: 24px; overflow: hidden; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .cover-photo { height: 200px; background: linear-gradient(135deg, #667eea, #764ba2); position: relative; }
+        .profile-avatar { position: absolute; bottom: -50px; left: 40px; width: 120px; height: 120px; background: white; border-radius: 50%; padding: 4px; }
+        .profile-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 48px; color: white; }
+        .profile-info { padding: 60px 30px 30px 30px; }
+        .profile-name { font-size: 28px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .verified-badge { background: #10b981; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .profile-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; color: #64748b; font-size: 14px; }
+        .profile-bio { color: #475569; line-height: 1.6; margin-bottom: 20px; }
+        .profile-stats { display: flex; gap: 30px; flex-wrap: wrap; padding-top: 20px; border-top: 1px solid #e2e8f0; margin-top: 10px; }
+        .stat-item { text-align: center; }
+        .stat-number { font-size: 24px; font-weight: 700; color: #1e293b; }
+        .stat-label { font-size: 12px; color: #64748b; }
+        
+        /* Rating Stars */
+        .rating-stars { display: inline-flex; align-items: center; gap: 4px; }
+        .rating-stars i { color: #f59e0b; font-size: 16px; }
+        .rating-number { font-weight: 600; margin-left: 8px; }
+        
+        /* Tabs */
+        .tabs { display: flex; gap: 12px; margin-bottom: 25px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; flex-wrap: wrap; }
+        .tab { padding: 10px 24px; background: none; border: none; font-weight: 600; cursor: pointer; border-radius: 8px; transition: all 0.3s; }
+        .tab.active { background: linear-gradient(135deg, #00c8ff, #00e8a0); color: #0f0c29; }
+        
+        /* Cards Grid */
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .service-card, .review-card, .portfolio-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: transform 0.3s; }
+        .service-card:hover, .review-card:hover, .portfolio-card:hover { transform: translateY(-3px); }
+        .service-category { display: inline-block; background: rgba(0,200,255,0.1); color: #00c8ff; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-bottom: 12px; }
+        .service-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .service-price { font-weight: 700; color: #f59e0b; font-size: 18px; margin: 10px 0; }
+        .hire-btn { width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        .message-btn { width: 100%; background: #8b5cf6; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        
+        .review-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+        .reviewer-avatar { width: 50px; height: 50px; background: #e2e8f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .reviewer-name { font-weight: 600; margin-bottom: 4px; }
+        .review-date { font-size: 11px; color: #94a3b8; }
+        .review-comment { color: #475569; line-height: 1.5; margin-top: 10px; }
+        
+        .portfolio-card img { width: 100%; height: 200px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }
+        .portfolio-title { font-weight: 600; margin-bottom: 5px; }
+        
+        .contact-btn { background: #00c8ff; color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .modal-content input, .modal-content textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
+        .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        
+        .button-group { display: flex; gap: 10px; margin-top: 15px; }
+        .button-group button { flex: 1; }
+        
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .profile-avatar { left: 50%; transform: translateX(-50%); } .profile-info { text-align: center; } .profile-meta { justify-content: center; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Service<span>Connect</span></div>
+        <div class="nav-links" id="navLinks">
+            <a href="index.html" class="nav-link">🏠 Home</a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+            <a href="chat.html" class="nav-link">💬 Messages</a>
+        </div>
+        <div class="user-info" id="userInfo">
+            <span class="user-name" id="userName">Guest</span>
+            <button class="logout-btn" onclick="logout()" style="display: none;" id="logoutBtn">Logout</button>
+            <a href="index.html" class="nav-link" id="loginLink">Login</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="profileContent">
+            <div class="loading-state" style="text-align: center; padding: 60px;">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <p>Loading profile...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contactModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 20px;">📧 Contact Provider</h3>
+            <input type="text" id="contactName" placeholder="Your Name *">
+            <input type="email" id="contactEmail" placeholder="Your Email *">
+            <input type="tel" id="contactPhone" placeholder="Your Phone (optional)">
+            <textarea id="contactMessage" rows="4" placeholder="Your message... *"></textarea>
+            <button class="hire-btn" onclick="sendContactMessage()">Send Message</button>
+            <button onclick="closeContactModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_URL = '';
+        let token = localStorage.getItem('token');
+        let user = null;
+        let currentProviderId = null;
+        let currentTab = 'services';
+
+        // Get provider ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const providerId = urlParams.get('id');
+
+        if (!providerId) {
+            window.location.href = 'marketplace.html';
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('user'));
+            if (user) {
+                document.getElementById('userName').innerText = user.full_name;
+                document.getElementById('logoutBtn').style.display = 'inline-block';
+                document.getElementById('loginLink').style.display = 'none';
+                
+                // Update nav links based on user type
+                const navLinks = document.getElementById('navLinks');
+                if (user.user_type === 'seeker') {
+                    navLinks.innerHTML = `<a href="seeker-dashboard.html" class="nav-link">📋 Dashboard</a>
+                                          <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+                                          <a href="chat.html" class="nav-link">💬 Messages</a>`;
+                } else if (user.user_type === 'provider') {
+                    navLinks.innerHTML = `<a href="provider-dashboard.html" class="nav-link">📊 Dashboard</a>
+                                          <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+                                          <a href="chat.html" class="nav-link">💬 Messages</a>`;
+                } else if (user.user_type === 'admin') {
+                    navLinks.innerHTML = `<a href="admin-dashboard.html" class="nav-link">📊 Admin</a>
+                                          <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>`;
+                }
+            }
+        } catch(e) {}
+
+        async function apiCall(endpoint, options = {}) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(API_URL + endpoint, { ...options, headers });
+            return response.json();
+        }
+
+        async function loadProfile() {
+            const result = await apiCall(`/api/provider/${providerId}/profile`);
+            
+            if (!result.success) {
+                document.getElementById('profileContent').innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-user-slash fa-3x"></i>
+                        <p>Provider not found</p>
+                        <a href="marketplace.html" class="contact-btn" style="display: inline-block; margin-top: 20px;">Back to Marketplace</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            currentProviderId = result.provider.id;
+            displayProfile(result);
+        }
+
+        function displayProfile(data) {
+            const provider = data.provider;
+            const services = data.services;
+            const reviews = data.reviews;
+            const portfolio = data.portfolio;
+            const stats = data.stats;
+            
+            const rating = provider.rating || 0;
+            const fullStars = Math.floor(rating);
+            const hasHalfStar = rating % 1 >= 0.5;
+            
+            let starsHtml = '';
+            for (let i = 0; i < fullStars; i++) starsHtml += '<i class="fas fa-star"></i>';
+            if (hasHalfStar) starsHtml += '<i class="fas fa-star-half-alt"></i>';
+            for (let i = 0; i < 5 - fullStars - (hasHalfStar ? 1 : 0); i++) starsHtml += '<i class="far fa-star"></i>';
+            
+            const memberDate = new Date(provider.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+            
+            document.getElementById('profileContent').innerHTML = `
+                <div class="profile-header">
+                    <div class="cover-photo"></div>
+                    <div class="profile-avatar">
+                        <div class="profile-avatar-img" style="width:100%; height:100%; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; color: white;">
+                            ${provider.full_name.charAt(0)}
+                        </div>
+                    </div>
+                    <div class="profile-info">
+                        <div class="profile-name">
+                            ${escapeHtml(provider.full_name)}
+                            ${provider.verified ? '<span class="verified-badge"><i class="fas fa-check-circle"></i> Verified</span>' : ''}
+                        </div>
+                        <div class="profile-meta">
+                            <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(provider.location || 'Location not specified')}</span>
+                            <span><i class="far fa-calendar-alt"></i> Member since ${memberDate}</span>
+                            <span><i class="fas fa-clock"></i> Response: ${provider.response_time || 'Within 24 hours'}</span>
+                        </div>
+                        <div class="rating-stars">
+                            ${starsHtml}
+                            <span class="rating-number">${rating.toFixed(1)} (${provider.total_reviews || 0} reviews)</span>
+                        </div>
+                        ${provider.bio ? `<div class="profile-bio">${escapeHtml(provider.bio)}</div>` : ''}
+                        <div class="profile-stats">
+                            <div class="stat-item"><div class="stat-number">${provider.years_experience || 0}+</div><div class="stat-label">Years Experience</div></div>
+                            <div class="stat-item"><div class="stat-number">${stats.completed_jobs || 0}</div><div class="stat-label">Jobs Completed</div></div>
+                            <div class="stat-item"><div class="stat-number">${services.length}</div><div class="stat-label">Services</div></div>
+                        </div>
+                        <div class="button-group" style="margin-top: 20px;">
+                            <button class="message-btn" onclick="openContactModal()"><i class="fas fa-envelope"></i> Contact Provider</button>
+                            ${user?.user_type === 'seeker' ? `<button class="hire-btn" onclick="hireProvider()"><i class="fas fa-handshake"></i> Hire Now</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab ${currentTab === 'services' ? 'active' : ''}" onclick="showTab('services')">📋 Services (${services.length})</button>
+                    <button class="tab ${currentTab === 'reviews' ? 'active' : ''}" onclick="showTab('reviews')">⭐ Reviews (${reviews.length})</button>
+                    ${portfolio.length > 0 ? `<button class="tab ${currentTab === 'portfolio' ? 'active' : ''}" onclick="showTab('portfolio')">📸 Portfolio (${portfolio.length})</button>` : ''}
+                </div>
+                
+                <div id="servicesTab" class="cards-grid" style="${currentTab !== 'services' ? 'display: none;' : ''}">
+                    ${services.length === 0 ? '<div class="empty-state">No services offered yet.</div>' : services.map(service => `
+                        <div class="service-card">
+                            <span class="service-category">${service.category_icon} ${service.category_name}</span>
+                            <div class="service-title">${escapeHtml(service.title)}</div>
+                            <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                            <div class="service-description" style="font-size:13px; color:#64748b;">${escapeHtml((service.description || '').substring(0, 100))}${service.description?.length > 100 ? '...' : ''}</div>
+                            ${user?.user_type === 'seeker' ? `<button class="hire-btn" onclick="hireService(${service.id}, ${service.provider_id})">Hire Now</button>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div id="reviewsTab" class="cards-grid" style="${currentTab !== 'reviews' ? 'display: none;' : ''}">
+                    ${reviews.length === 0 ? '<div class="empty-state">No reviews yet. Be the first to leave a review!</div>' : reviews.map(review => `
+                        <div class="review-card">
+                            <div class="review-header">
+                                <div class="reviewer-avatar">${review.reviewer_name?.charAt(0) || 'U'}</div>
+                                <div>
+                                    <div class="reviewer-name">${escapeHtml(review.reviewer_name)}</div>
+                                    <div class="rating-stars">
+                                        ${Array(review.rating).fill('<i class="fas fa-star"></i>').join('')}${Array(5-review.rating).fill('<i class="far fa-star"></i>').join('')}
+                                    </div>
+                                    <div class="review-date">${new Date(review.created_at).toLocaleDateString()}</div>
+                                </div>
+                            </div>
+                            <div class="review-comment">${escapeHtml(review.comment || 'No comment provided.')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div id="portfolioTab" class="cards-grid" style="${currentTab !== 'portfolio' ? 'display: none;' : ''}">
+                    ${portfolio.map(item => `
+                        <div class="portfolio-card">
+                            ${item.image_url ? `<img src="${item.image_url}" alt="${escapeHtml(item.title)}">` : '<div style="height:200px; background:#e2e8f0; border-radius:12px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-image fa-3x" style="color:#94a3b8;"></i></div>'}
+                            <div class="portfolio-title">${escapeHtml(item.title)}</div>
+                            <div class="portfolio-description" style="font-size:13px; color:#64748b;">${escapeHtml(item.description || '')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function showTab(tab) {
+            currentTab = tab;
+            document.getElementById('servicesTab').style.display = tab === 'services' ? 'grid' : 'none';
+            document.getElementById('reviewsTab').style.display = tab === 'reviews' ? 'grid' : 'none';
+            const portfolioTab = document.getElementById('portfolioTab');
+            if (portfolioTab) {
+                portfolioTab.style.display = tab === 'portfolio' ? 'grid' : 'none';
+            }
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function openContactModal() {
+            document.getElementById('contactModal').style.display = 'flex';
+            document.getElementById('contactName').value = user?.full_name || '';
+            document.getElementById('contactEmail').value = user?.email || '';
+            document.getElementById('contactPhone').value = '';
+            document.getElementById('contactMessage').value = '';
+        }
+
+        function closeContactModal() {
+            document.getElementById('contactModal').style.display = 'none';
+        }
+
+        async function sendContactMessage() {
+            const name = document.getElementById('contactName').value;
+            const email = document.getElementById('contactEmail').value;
+            const phone = document.getElementById('contactPhone').value;
+            const message = document.getElementById('contactMessage').value;
+            
+            if (!name || !email || !message) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            const result = await apiCall(`/api/provider/${currentProviderId}/contact`, {
+                method: 'POST',
+                body: JSON.stringify({ name, email, phone, message })
+            });
+            
+            if (result.success) {
+                showToast('Message sent successfully!', 'success');
+                closeContactModal();
+            } else {
+                showToast(result.message || 'Failed to send message', 'error');
+            }
+        }
+
+        function hireProvider() {
+            window.location.href = `marketplace.html?provider=${currentProviderId}`;
+        }
+
+        function hireService(serviceId, providerId) {
+            window.location.href = `marketplace.html?hire=${serviceId}&provider=${providerId}`;
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+        }
+
+        loadProfile();
+    </script>
+</body>
+</html>
