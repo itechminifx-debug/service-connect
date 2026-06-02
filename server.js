@@ -752,19 +752,36 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
 });
 
 // ==================== MARKETPLACE & DIRECT HIRE ====================
+// Get all services for marketplace (FIXED)
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT ps.*, u.full_name as provider_name, u.location as provider_location, u.rating as provider_rating,
-                    u.total_reviews as provider_reviews, c.name as category_name, c.icon as category_icon
-             FROM provider_services ps
-             JOIN users u ON ps.provider_id = u.id
-             JOIN categories c ON ps.category_id = c.id
-             WHERE ps.is_active = true AND u.is_active = true
-             ORDER BY u.rating DESC, ps.created_at DESC`
-        );
+        const result = await pool.query(`
+            SELECT 
+                ps.id,
+                ps.title,
+                ps.description,
+                ps.price,
+                ps.price_type,
+                ps.provider_id,
+                ps.created_at,
+                u.full_name as provider_name,
+                u.location as provider_location,
+                u.rating as provider_rating,
+                u.total_reviews as provider_reviews,
+                c.name as category_name,
+                c.icon as category_icon,
+                c.id as category_id
+            FROM provider_services ps
+            JOIN users u ON ps.provider_id = u.id
+            JOIN categories c ON ps.category_id = c.id
+            WHERE ps.is_active = true AND u.is_active = true
+            ORDER BY u.rating DESC, ps.created_at DESC
+        `);
+        
+        console.log(`Marketplace: Found ${result.rows.length} services`);
         res.json(result.rows);
     } catch (error) {
+        console.error('Marketplace error:', error);
         res.status(500).json({ error: error.message });
     }
 });
