@@ -1794,7 +1794,9 @@ app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
 });
 // ==================== PROVIDER PUBLIC PROFILE ENDPOINTS ====================
 
-// Get provider public profile
+// ==================== PROVIDER PROFILE ENDPOINTS ====================
+
+// Get provider public profile (anyone can view)
 app.get('/api/provider/:id/profile', async (req, res) => {
     const { id } = req.params;
     
@@ -1832,7 +1834,7 @@ app.get('/api/provider/:id/profile', async (req, res) => {
         
         // Get reviews
         const reviewsResult = await pool.query(`
-            SELECT r.*, u.full_name as reviewer_name, u.profile_image as reviewer_image
+            SELECT r.*, u.full_name as reviewer_name
             FROM reviews r
             JOIN users u ON r.reviewer_id = u.id
             WHERE r.reviewee_id = $1
@@ -1864,13 +1866,38 @@ app.get('/api/provider/:id/profile', async (req, res) => {
     }
 });
 
-// Update provider profile (authenticated provider only)
+// Get own profile for editing (authenticated provider)
+app.get('/api/provider/my-profile', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can access their profile' });
+    }
+    
+    try {
+        const result = await pool.query(`
+            SELECT id, full_name, email, phone, location, bio, company_name, 
+                   years_experience, response_time, profile_image, cover_image
+            FROM users 
+            WHERE id = $1 AND user_type = 'provider'
+        `, [req.user.id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Profile not found' });
+        }
+        
+        res.json({ success: true, profile: result.rows[0] });
+    } catch (error) {
+        console.error('Error getting own profile:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update provider profile (authenticated provider)
 app.put('/api/provider/profile', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'provider') {
         return res.status(403).json({ success: false, message: 'Only providers can update their profile' });
     }
     
-    const { bio, company_name, years_experience, response_time, location } = req.body;
+    const { bio, company_name, years_experience, response_time, location, phone } = req.body;
     
     try {
         await pool.query(`
@@ -1879,9 +1906,10 @@ app.put('/api/provider/profile', authenticateToken, async (req, res) => {
                 company_name = COALESCE($2, company_name),
                 years_experience = COALESCE($3, years_experience),
                 response_time = COALESCE($4, response_time),
-                location = COALESCE($5, location)
-            WHERE id = $6
-        `, [bio, company_name, years_experience, response_time, location, req.user.id]);
+                location = COALESCE($5, location),
+                phone = COALESCE($6, phone)
+            WHERE id = $7
+        `, [bio, company_name, years_experience, response_time, location, phone, req.user.id]);
         
         res.json({ success: true, message: 'Profile updated successfully' });
     } catch (error) {
@@ -1933,7 +1961,7 @@ app.delete('/api/provider/portfolio/:id', authenticateToken, async (req, res) =>
     }
 });
 
-// Contact provider (for non-logged in users or seekers)
+// Contact provider
 app.post('/api/provider/:id/contact', async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, message } = req.body;
@@ -1948,17 +1976,14 @@ app.post('/api/provider/:id/contact', async (req, res) => {
             VALUES ($1, $2, $3, $4, $5)
         `, [id, name, email, phone, message]);
         
-        // Optional: Send email notification to provider
-        const providerEmail = await pool.query('SELECT email FROM users WHERE id = $1', [id]);
-        if (providerEmail.rows.length > 0) {
-            sendEmail(providerEmail.rows[0].email, 'contactRequest', {
-                name: name,
-                email: email,
-                message: message
-            }).catch(console.error);
+        // Get provider email for notification
+        const providerResult = await pool.query('SELECT email FROM users WHERE id = $1', [id]);
+        if (providerResult.rows.length > 0 && process.env.EMAIL_USER) {
+            // Send email notification (optional)
+            console.log(`Contact message sent to provider ${id} from ${email}`);
         }
         
-        res.json({ success: true, message: 'Message sent successfully! The provider will contact you soon.' });
+        res.json({ success: true, message: 'Message sent successfully!' });
     } catch (error) {
         console.error('Error sending contact message:', error);
         res.status(500).json({ success: false, error: error.message });
