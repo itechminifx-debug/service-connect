@@ -40,6 +40,8 @@
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
         .info-banner { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
         .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
+        .loading-spinner { text-align: center; padding: 60px; }
+        .loading-spinner i { font-size: 40px; color: #00c8ff; }
         @media (max-width: 768px) { .navbar { flex-direction: column; } .services-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -75,10 +77,15 @@
             <button class="search-btn" onclick="loadServices()">🔍 Search</button>
         </div>
         
-        <div id="servicesGrid" class="services-grid"><div class="empty-state">Loading services...</div></div>
+        <div id="servicesGrid" class="services-grid">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Loading services...</p>
+            </div>
+        </div>
     </div>
 
-    <!-- Hire Modal (Only for Seekers) -->
+    <!-- Hire Modal -->
     <div id="hireModal" class="modal">
         <div class="modal-content">
             <h3 style="margin-bottom:20px;">📝 Hire Provider</h3>
@@ -120,9 +127,26 @@
         }
         
         async function loadCategories() {
-            const categories = await apiCall('/api/categories');
-            const select = document.getElementById('categoryFilter');
-            select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+            try {
+                const categories = await apiCall('/api/categories');
+                const select = document.getElementById('categoryFilter');
+                if (categories && categories.length > 0) {
+                    // Remove duplicates by name
+                    const uniqueCategories = [];
+                    const names = new Set();
+                    for (const cat of categories) {
+                        if (!names.has(cat.name)) {
+                            names.add(cat.name);
+                            uniqueCategories.push(cat);
+                        }
+                    }
+                    select.innerHTML = '<option value="">All Categories</option>' + uniqueCategories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                } else {
+                    select.innerHTML = '<option value="">All Categories</option>';
+                }
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
         }
         
         function renderStars(rating) {
@@ -148,17 +172,21 @@
             if (minPrice) url += `min_price=${minPrice}&`;
             if (maxPrice) url += `max_price=${maxPrice}&`;
             
+            console.log('Fetching services from:', url);
+            
             const services = await apiCall(url);
             const container = document.getElementById('servicesGrid');
+            
+            console.log('Services received:', services);
             
             if (!services || services.length === 0) { 
                 container.innerHTML = '<div class="empty-state">No services found. Try different filters!</div>'; 
                 return; 
             }
             
-            // IMPORTANT: Different views for Seeker vs Provider
+            // Different views for Seeker vs Provider
             if (user?.user_type === 'provider') {
-                // PROVIDER VIEW - Only show their own services (read-only)
+                // PROVIDER VIEW - Only show their own services
                 const myServices = services.filter(s => s.provider_id === user.id);
                 
                 if (myServices.length === 0) {
@@ -181,7 +209,7 @@
                 `).join('');
                 
             } else {
-                // SEEKER VIEW - Show ALL services (can hire)
+                // SEEKER VIEW - Show ALL services
                 container.innerHTML = services.map(service => `
                     <div class="service-card">
                         <span class="service-category">${service.category_icon} ${service.category_name}</span>
@@ -198,7 +226,7 @@
                         <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
                         <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
                     </div>
-                `).join();
+                `).join('');
             }
         }
         
@@ -247,8 +275,12 @@
             return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
         }
         
+        // Initialize
         loadCategories(); 
         loadServices();
+        
+        // Refresh every 30 seconds
+        setInterval(loadServices, 30000);
     </script>
 </body>
 </html>
