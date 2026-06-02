@@ -59,7 +59,7 @@
         <div class="logo">Service<span>Connect</span></div>
         <div class="nav-links">
             <a href="#" class="nav-link active">📋 My Dashboard</a>
-            <a href="#" class="nav-link" onclick="window.location.href='marketplace.html'">🛒 Marketplace</a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
             <a href="chat.html" class="nav-link">💬 Messages</a>
         </div>
         <div class="user-info">
@@ -127,12 +127,7 @@
             document.getElementById('jobCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
         }
 
-        async function loadDashboard() { 
-            await loadPostedJobs(); 
-            await loadDirectHires(); 
-            await loadBids(); 
-            await loadStats(); 
-        }
+        async function loadDashboard() { await loadPostedJobs(); await loadDirectHires(); await loadBids(); await loadStats(); }
 
         async function postJob() {
             const category_id = document.getElementById('jobCategory').value;
@@ -140,25 +135,43 @@
             const description = document.getElementById('jobDescription').value;
             if (!category_id || !title || !description) { showToast('Fill category, title, and description', 'error'); return; }
             const result = await apiCall('/api/jobs', { method: 'POST', body: JSON.stringify({ category_id, title, description, budget: document.getElementById('jobBudget').value, location: document.getElementById('jobLocation').value, preferred_date: document.getElementById('jobDate').value }) });
-            if (result.success) { showToast('Job posted!', 'success'); document.getElementById('jobTitle').value = ''; document.getElementById('jobDescription').value = ''; document.getElementById('jobBudget').value = ''; document.getElementById('jobLocation').value = ''; document.getElementById('jobDate').value = ''; loadPostedJobs(); loadStats(); }
-            else { showToast(result.message || 'Failed', 'error'); }
+            if (result.success) {
+                showToast('Job posted!', 'success');
+                document.getElementById('jobTitle').value = ''; 
+                document.getElementById('jobDescription').value = ''; 
+                document.getElementById('jobBudget').value = ''; 
+                document.getElementById('jobLocation').value = ''; 
+                document.getElementById('jobDate').value = '';
+                loadPostedJobs(); 
+                loadStats();
+            } else { 
+                showToast(result.message || 'Failed', 'error'); 
+            }
         }
 
         async function loadPostedJobs() {
-            const jobs = await apiCall('/api/jobs/my');
-            const container = document.getElementById('postedJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">📋 No jobs posted yet. Post your first job above!</div>'; return; }
-            container.innerHTML = jobs.map(job => `
-                <div class="job-card">
-                    <span class="job-category">${getCategoryIcon(job.category_name)} ${job.category_name}</span>
-                    <div class="job-title">${escapeHtml(job.title)}</div>
-                    <div class="job-details">${escapeHtml(job.description?.substring(0, 120) || '')}${job.description?.length > 120 ? '...' : ''}</div>
-                    <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
-                    <div class="job-details">📍 ${job.location || 'Location not specified'} | 👁️ ${job.views || 0} views</div>
-                    <div class="job-details">Status: ${job.status === 'open' ? '<span class="badge-pending">🟢 Open</span>' : job.status === 'assigned' ? '<span class="badge-accepted">🟡 Assigned</span>' : '<span class="badge-completed">🔵 Completed</span>'}</div>
-                    ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">View Bids (${job.bid_count || 0})</button>` : ''}
-                </div>
-            `).join('');
+            try {
+                const jobs = await apiCall('/api/jobs/my');
+                const container = document.getElementById('postedJobs');
+                if (!jobs || jobs.length === 0) { 
+                    container.innerHTML = '<div class="empty-state">📋 No jobs posted yet. Post your first job above!</div>'; 
+                    return; 
+                }
+                container.innerHTML = jobs.map(job => `
+                    <div class="job-card">
+                        <span class="job-category">${getCategoryIcon(job.category_name)} ${job.category_name}</span>
+                        <div class="job-title">${escapeHtml(job.title)}</div>
+                        <div class="job-details">${escapeHtml(job.description?.substring(0, 120) || '')}${job.description?.length > 120 ? '...' : ''}</div>
+                        <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
+                        <div class="job-details">📍 ${job.location || 'Location not specified'} | 👁️ ${job.views || 0} views</div>
+                        <div class="job-details">Status: ${job.status === 'open' ? '<span class="badge-pending">🟢 Open</span>' : job.status === 'assigned' ? '<span class="badge-accepted">🟡 Assigned</span>' : '<span class="badge-completed">🔵 Completed</span>'}</div>
+                        ${job.status === 'open' ? `<button class="accept-btn" onclick="viewBids(${job.id})" style="background:#3b82f6;">View Bids (${job.bid_count || 0})</button>` : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading posted jobs:', error);
+                document.getElementById('postedJobs').innerHTML = '<div class="empty-state">Error loading jobs. Please refresh.</div>';
+            }
         }
 
         async function loadDirectHires() {
