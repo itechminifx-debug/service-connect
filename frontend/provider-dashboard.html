@@ -46,6 +46,7 @@
         .edit-service-btn { background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
         .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .delete-service { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+        .view-profile-btn { background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-left: 15px; }
         .add-service-form { background: white; border-radius: 20px; padding: 25px; margin-top: 20px; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
         .form-input, .form-select, .form-textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; }
@@ -60,7 +61,8 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
         .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
         .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
-        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
+        .header-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } .header-actions { flex-direction: column; align-items: stretch; } .view-profile-btn { margin-left: 0; } }
     </style>
 </head>
 <body>
@@ -105,6 +107,12 @@
         <div id="myBids" style="display: none;" class="cards-grid"></div>
         <div id="myJobs" style="display: none;" class="cards-grid"></div>
         <div id="myServices" style="display: none;">
+            <div class="header-actions">
+                <h3 style="margin-bottom: 0;">📋 My Services</h3>
+                <button class="view-profile-btn" onclick="viewPublicProfile()" id="viewProfileBtn">
+                    <i class="fas fa-external-link-alt"></i> View My Public Profile
+                </button>
+            </div>
             <div id="servicesList"></div>
             <div class="add-service-form">
                 <h3 style="margin-bottom: 15px;">➕ Add New Service</h3>
@@ -159,6 +167,15 @@
             document.getElementById('providerName').innerText = user?.full_name?.split(' ')[0] || 'Provider';
         } catch(e) {}
 
+        // View Public Profile Function
+        function viewPublicProfile() {
+            if (user && user.id) {
+                window.open(`provider-profile.html?id=${user.id}`, '_blank');
+            } else {
+                showToast('User ID not found', 'error');
+            }
+        }
+
         async function apiCall(endpoint, options = {}) {
             const response = await fetch(API_URL + endpoint, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers } });
             return response.json();
@@ -194,7 +211,6 @@
             }
         }
 
-        // ============ AVAILABLE JOBS ============
         async function loadAvailableJobs() {
             const jobs = await apiCall('/api/jobs');
             const container = document.getElementById('availableJobs');
@@ -226,7 +242,6 @@
             else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY BIDS ============
         async function loadMyBids() {
             const bids = await apiCall('/api/provider/bids');
             const container = document.getElementById('myBids');
@@ -234,7 +249,6 @@
             container.innerHTML = bids.map(bid => `<div class="job-card"><span class="job-category">📄 Bid #${bid.id}</span><div class="job-title">${escapeHtml(bid.job_title)}</div><div class="job-details">Your bid: GHS ${bid.amount} | ${bid.estimated_days} days</div><div class="job-details">Status: ${bid.status === 'pending' ? '⏳ Pending' : bid.status === 'accepted' ? '✅ Accepted' : '❌ Rejected'}</div><div class="job-budget">💰 Budget: GHS ${bid.job_budget || 'Negotiable'}</div></div>`).join('');
         }
 
-        // ============ MY JOBS ============
         async function loadMyJobs() {
             const jobs = await apiCall('/api/provider/jobs');
             const container = document.getElementById('myJobs');
@@ -264,7 +278,6 @@
             else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // ============ MY SERVICES (WITH WORKING EDIT & DELETE) ============
         async function loadMyServices() {
             const services = await apiCall('/api/provider/services');
             const container = document.getElementById('servicesList');
@@ -336,53 +349,20 @@
             const price = document.getElementById('servicePrice').value;
             const price_type = document.getElementById('servicePriceType').value;
             const experience_years = document.getElementById('serviceExperience').value;
-            
-            if (!category_id || !title) { 
-                showToast('Category and title are required', 'error'); 
-                return; 
-            }
-            
-            showToast('Adding service...', 'info');
-            
-            const result = await apiCall('/api/provider/services', { 
-                method: 'POST', 
-                body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) 
-            });
-            
-            if (result.success) { 
-                showToast('✅ Service added! It will appear in Marketplace.', 'success'); 
-                document.getElementById('serviceTitle').value = ''; 
-                document.getElementById('serviceDescription').value = ''; 
-                document.getElementById('servicePrice').value = ''; 
-                document.getElementById('serviceExperience').value = ''; 
-                loadMyServices(); 
-            } else { 
-                showToast(result.message || 'Failed to add service', 'error'); 
-            }
+            if (!category_id || !title) { showToast('Category and title required', 'error'); return; }
+            const result = await apiCall('/api/provider/services', { method: 'POST', body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) });
+            if (result.success) { showToast('✅ Service added! It will appear in Marketplace.', 'success'); document.getElementById('serviceTitle').value = ''; document.getElementById('serviceDescription').value = ''; document.getElementById('servicePrice').value = ''; document.getElementById('serviceExperience').value = ''; loadMyServices(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
 
-        // WORKING DELETE FUNCTION
         async function deleteService(id) { 
-            if (confirm('⚠️ Delete this service? It will be removed from Marketplace.')) { 
-                showToast('Deleting service...', 'info');
-                try {
-                    const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
-                    console.log('Delete response:', result);
-                    
-                    if (result.success) { 
-                        showToast('✅ Service deleted successfully!', 'success'); 
-                        loadMyServices(); 
-                    } else { 
-                        showToast(result.message || 'Failed to delete service', 'error'); 
-                    }
-                } catch (error) {
-                    console.error('Delete error:', error);
-                    showToast('Network error. Please try again.', 'error');
-                }
+            if (confirm('Delete this service? It will be removed from Marketplace.')) { 
+                const result = await apiCall(`/api/provider/services/${id}`, { method: 'DELETE' }); 
+                if (result.success) { showToast('✅ Service deleted!', 'success'); loadMyServices(); } 
+                else { showToast('Failed to delete', 'error'); }
             } 
         }
 
-        // ============ HIRE REQUESTS ============
         async function loadHireRequests() {
             const requests = await apiCall('/api/provider/hire-requests');
             const container = document.getElementById('hireRequests');
@@ -407,17 +387,10 @@
         async function respondToHire(hireId, status) {
             showToast('Processing...', 'info');
             const result = await apiCall(`/api/direct-hire/${hireId}/respond`, { method: 'PUT', body: JSON.stringify({ status }) });
-            if (result.success) { 
-                showToast(status === 'accepted' ? '✅ Hire request accepted! Job added to My Jobs.' : '✅ Hire request declined', 'success'); 
-                loadHireRequests(); 
-                loadMyJobs(); 
-                loadStats();
-            } else { 
-                showToast(result.message || 'Failed to respond', 'error'); 
-            }
+            if (result.success) { showToast(status === 'accepted' ? '✅ Hire request accepted! Job added to My Jobs.' : '✅ Hire request declined', 'success'); loadHireRequests(); loadMyJobs(); loadStats(); }
+            else { showToast(result.message || 'Failed to respond', 'error'); }
         }
 
-        // ============ STATS ============
         async function loadStats() {
             const stats = await apiCall('/api/dashboard/stats');
             document.getElementById('statsGrid').innerHTML = `
