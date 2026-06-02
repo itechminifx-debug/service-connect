@@ -46,7 +46,7 @@
         .edit-service-btn { background: #f59e0b; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
         .chat-btn { background: #8b5cf6; color: white; border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .delete-service { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
-        .view-profile-btn { background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-left: 15px; }
+        .view-profile-btn { background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; cursor: pointer; }
         .add-service-form { background: white; border-radius: 20px; padding: 25px; margin-top: 20px; }
         .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
         .form-input, .form-select, .form-textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; }
@@ -62,7 +62,7 @@
         .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
         .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
         .header-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
-        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } .header-actions { flex-direction: column; align-items: stretch; } .view-profile-btn { margin-left: 0; } }
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .cards-grid { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -109,7 +109,7 @@
         <div id="myServices" style="display: none;">
             <div class="header-actions">
                 <h3 style="margin-bottom: 0;">📋 My Services</h3>
-                <button class="view-profile-btn" onclick="viewPublicProfile()" id="viewProfileBtn">
+                <button class="view-profile-btn" onclick="viewPublicProfile()">
                     <i class="fas fa-external-link-alt"></i> View My Public Profile
                 </button>
             </div>
@@ -167,7 +167,6 @@
             document.getElementById('providerName').innerText = user?.full_name?.split(' ')[0] || 'Provider';
         } catch(e) {}
 
-        // View Public Profile Function
         function viewPublicProfile() {
             if (user && user.id) {
                 window.open(`provider-profile.html?id=${user.id}`, '_blank');
@@ -182,8 +181,17 @@
         }
 
         async function loadCategories() {
-            categories = await apiCall('/api/categories');
-            document.getElementById('serviceCategory').innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+            try {
+                categories = await apiCall('/api/categories');
+                const select = document.getElementById('serviceCategory');
+                if (categories && categories.length > 0) {
+                    select.innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                } else {
+                    select.innerHTML = '<option value="">No categories available</option>';
+                }
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
         }
 
         async function loadDashboard() { 
@@ -212,25 +220,33 @@
         }
 
         async function loadAvailableJobs() {
-            const jobs = await apiCall('/api/jobs');
-            const container = document.getElementById('availableJobs');
-            if (!jobs || jobs.length === 0) { container.innerHTML = '<div class="empty-state">No jobs available. Check back later!</div>'; return; }
-            container.innerHTML = jobs.map(job => `
-                <div class="job-card">
-                    <span class="job-category">${job.category_icon || '🔧'} ${job.category_name}</span>
-                    <div class="job-title">${escapeHtml(job.title)}</div>
-                    <div class="job-details">${escapeHtml(job.description?.substring(0, 100) || '')}${job.description?.length > 100 ? '...' : ''}</div>
-                    <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'} | 📍 ${job.location || 'Anywhere'}</div>
-                    <div class="bid-form">
-                        <input type="number" id="bidAmount_${job.id}" class="bid-input" placeholder="Your bid amount (GHS)">
-                        <input type="number" id="bidDays_${job.id}" class="bid-input" placeholder="Est. days">
-                        <div class="button-group">
-                            <button class="bid-btn" onclick="placeBid(${job.id})">Place Bid</button>
-                            <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})">💬 Ask Question</button>
+            try {
+                const jobs = await apiCall('/api/jobs');
+                const container = document.getElementById('availableJobs');
+                if (!jobs || jobs.length === 0) { 
+                    container.innerHTML = '<div class="empty-state">No jobs available. Check back later!</div>'; 
+                    return; 
+                }
+                container.innerHTML = jobs.map(job => `
+                    <div class="job-card">
+                        <span class="job-category">${job.category_icon || '🔧'} ${job.category_name}</span>
+                        <div class="job-title">${escapeHtml(job.title)}</div>
+                        <div class="job-details">${escapeHtml(job.description?.substring(0, 100) || '')}${job.description?.length > 100 ? '...' : ''}</div>
+                        <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'} | 📍 ${job.location || 'Anywhere'}</div>
+                        <div class="bid-form">
+                            <input type="number" id="bidAmount_${job.id}" class="bid-input" placeholder="Your bid amount (GHS)">
+                            <input type="number" id="bidDays_${job.id}" class="bid-input" placeholder="Est. days">
+                            <div class="button-group">
+                                <button class="bid-btn" onclick="placeBid(${job.id})">Place Bid</button>
+                                <button class="chat-btn" onclick="startChatWithSeeker(${job.seeker_id}, ${job.id})">💬 Ask Question</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            } catch (error) {
+                console.error('Error loading jobs:', error);
+                document.getElementById('availableJobs').innerHTML = '<div class="empty-state">Error loading jobs. Please refresh.</div>';
+            }
         }
 
         async function placeBid(jobId) {
@@ -279,26 +295,31 @@
         }
 
         async function loadMyServices() {
-            const services = await apiCall('/api/provider/services');
-            const container = document.getElementById('servicesList');
-            if (!services || services.length === 0) { 
-                container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; 
-                return; 
+            try {
+                const services = await apiCall('/api/provider/services');
+                const container = document.getElementById('servicesList');
+                if (!services || services.length === 0) { 
+                    container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Add your first service below to appear in Marketplace!</div>'; 
+                    return; 
+                }
+                container.innerHTML = services.map(service => `
+                    <div class="service-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                        <div style="flex:1;">
+                            <div class="job-title">${escapeHtml(service.title)}</div>
+                            <div style="font-size:12px; color:#64748b;">📁 ${service.category_name}</div>
+                            <div class="job-budget">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
+                            <div style="font-size:12px; color:#64748b; margin-top:5px;">📝 ${escapeHtml(service.description?.substring(0, 80) || 'No description')}${service.description?.length > 80 ? '...' : ''}</div>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="edit-service-btn" onclick="openEditServiceModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
+                            <button class="delete-service" onclick="deleteService(${service.id})">🗑️ Delete</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading services:', error);
+                document.getElementById('servicesList').innerHTML = '<div class="empty-state">Error loading services. Please refresh.</div>';
             }
-            container.innerHTML = services.map(service => `
-                <div class="service-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
-                    <div style="flex:1;">
-                        <div class="job-title">${escapeHtml(service.title)}</div>
-                        <div style="font-size:12px; color:#64748b;">📁 ${service.category_name}</div>
-                        <div class="job-budget">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
-                        <div style="font-size:12px; color:#64748b; margin-top:5px;">📝 ${escapeHtml(service.description?.substring(0, 80) || 'No description')}${service.description?.length > 80 ? '...' : ''}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="edit-service-btn" onclick="openEditServiceModal(${service.id}, '${escapeHtml(service.title)}', '${escapeHtml(service.description)}', ${service.price || 0}, '${service.price_type || 'fixed'}')">✏️ Edit</button>
-                        <button class="delete-service" onclick="deleteService(${service.id})">🗑️ Delete</button>
-                    </div>
-                </div>
-            `).join('');
         }
 
         function openEditServiceModal(id, title, description, price, priceType) {
@@ -349,10 +370,40 @@
             const price = document.getElementById('servicePrice').value;
             const price_type = document.getElementById('servicePriceType').value;
             const experience_years = document.getElementById('serviceExperience').value;
-            if (!category_id || !title) { showToast('Category and title required', 'error'); return; }
-            const result = await apiCall('/api/provider/services', { method: 'POST', body: JSON.stringify({ category_id, title, description, price, price_type, experience_years }) });
-            if (result.success) { showToast('✅ Service added! It will appear in Marketplace.', 'success'); document.getElementById('serviceTitle').value = ''; document.getElementById('serviceDescription').value = ''; document.getElementById('servicePrice').value = ''; document.getElementById('serviceExperience').value = ''; loadMyServices(); }
-            else { showToast(result.message || 'Failed', 'error'); }
+            
+            if (!category_id) {
+                showToast('Please select a category', 'error');
+                return;
+            }
+            if (!title) {
+                showToast('Please enter a service title', 'error');
+                return;
+            }
+            
+            showToast('Adding service...', 'info');
+            
+            const result = await apiCall('/api/provider/services', { 
+                method: 'POST', 
+                body: JSON.stringify({ 
+                    category_id: parseInt(category_id), 
+                    title, 
+                    description, 
+                    price: price ? parseFloat(price) : null,
+                    price_type, 
+                    experience_years: experience_years ? parseInt(experience_years) : 0 
+                }) 
+            });
+            
+            if (result.success) { 
+                showToast('✅ Service added! It will appear in Marketplace.', 'success'); 
+                document.getElementById('serviceTitle').value = ''; 
+                document.getElementById('serviceDescription').value = ''; 
+                document.getElementById('servicePrice').value = ''; 
+                document.getElementById('serviceExperience').value = ''; 
+                loadMyServices(); 
+            } else { 
+                showToast(result.message || 'Failed to add service', 'error'); 
+            }
         }
 
         async function deleteService(id) { 
