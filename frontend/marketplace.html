@@ -39,6 +39,7 @@
         .modal-content input, .modal-content textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
         .info-banner { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: white; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
+        .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
         @media (max-width: 768px) { .navbar { flex-direction: column; } .services-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -59,11 +60,11 @@
 
     <div class="container">
         <div id="providerBanner" class="info-banner" style="display: none;">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. Your services are displayed below. Click "View Profile" to see your public profile.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Provider</strong>. You can only see and manage your own services here.
         </div>
         
         <div id="seekerBanner" class="info-banner" style="display: none; background: linear-gradient(135deg, #10b981, #059669);">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse services and hire providers directly. Click provider names to view their full profile.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse all services and hire providers directly.
         </div>
 
         <div class="filters">
@@ -132,7 +133,7 @@
             for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
             if (halfStar) stars += '<i class="fas fa-star-half-alt"></i>';
             for (let i = 0; i < 5 - fullStars - (halfStar ? 1 : 0); i++) stars += '<i class="far fa-star"></i>';
-            return `${stars} <span class="rating-text">${rating.toFixed(1)} (${service.total_reviews || 0} reviews)</span>`;
+            return `${stars} <span class="rating-text">${rating.toFixed(1)}</span>`;
         }
         
         async function loadServices() {
@@ -155,25 +156,20 @@
                 return; 
             }
             
-            let displayServices = services;
+            // IMPORTANT: Different views for Seeker vs Provider
             if (user?.user_type === 'provider') {
-                displayServices = services.filter(s => s.provider_id === user.id);
-            }
-            
-            if (displayServices.length === 0) {
-                if (user?.user_type === 'provider') {
+                // PROVIDER VIEW - Only show their own services (read-only)
+                const myServices = services.filter(s => s.provider_id === user.id);
+                
+                if (myServices.length === 0) {
                     container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Go to your Dashboard → My Services to add your first service!</div>';
-                } else {
-                    container.innerHTML = '<div class="empty-state">No services found. Try different filters!</div>';
+                    return;
                 }
-                return;
-            }
-            
-            if (user?.user_type === 'provider') {
-                container.innerHTML = displayServices.map(service => `
+                
+                container.innerHTML = myServices.map(service => `
                     <div class="service-card" style="border: 2px solid #8b5cf6;">
                         <span class="service-category">${service.category_icon} ${service.category_name}</span>
-                        <span style="display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px;"><i class="fas fa-user-check"></i> Your Service</span>
+                        <span class="my-service-badge"><i class="fas fa-user-check"></i> Your Service</span>
                         <div class="service-title">${escapeHtml(service.title)}</div>
                         <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
                         <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
@@ -183,8 +179,10 @@
                         </div>
                     </div>
                 `).join('');
+                
             } else {
-                container.innerHTML = displayServices.map(service => `
+                // SEEKER VIEW - Show ALL services (can hire)
+                container.innerHTML = services.map(service => `
                     <div class="service-card">
                         <span class="service-category">${service.category_icon} ${service.category_name}</span>
                         <div class="service-title">${escapeHtml(service.title)}</div>
@@ -193,13 +191,14 @@
                             <a href="provider-profile.html?id=${service.provider_id}" style="color: #8b5cf6; text-decoration: none; font-weight: 500;">${escapeHtml(service.provider_name)}</a>
                             <span style="font-size:12px; color:#64748b; margin-left:5px;">⭐ ${service.provider_rating?.toFixed(1) || 'New'}</span>
                         </div>
+                        <div class="rating-stars">${renderStars(service.provider_rating)}</div>
                         <div class="provider-name"><i class="fas fa-map-marker-alt"></i> ${service.provider_location || 'Location not specified'}</div>
                         <div class="service-price">💰 GHS ${service.price || 'Negotiable'} ${service.price_type === 'hourly' ? '/hour' : ''}</div>
                         <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(service.description?.substring(0, 100) || '')}</div>
                         <button class="hire-btn" onclick="openHireModal(${service.id}, ${service.provider_id}, '${escapeHtml(service.title)}')">📞 Hire Now</button>
                         <a href="provider-profile.html?id=${service.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
                     </div>
-                `).join('');
+                `).join();
             }
         }
         
