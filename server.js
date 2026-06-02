@@ -1775,7 +1775,204 @@ app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== PROVIDER PUBLIC PROFILE ENDPOINTS ====================
 
+// Get provider public profile
+app.get('/api/provider/:id/profile', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        // Get provider details
+        const userResult = await pool.query(`
+            SELECT id, full_name, email, location, rating, total_reviews, 
+                   bio, profile_image, cover_image, company_name, years_experience,
+                   completed_jobs, response_time, verified, created_at
+            FROM users 
+            WHERE id = $1 AND user_type = 'provider' AND is_active = true
+        `, [id]);
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Provider not found' });
+        }
+        
+        const provider = userResult.rows[0];
+        
+        // Get provider services
+        const servicesResult = await pool.query(`
+            SELECT ps.*, c.name as category_name, c.icon as category_icon
+            FROM provider_services ps
+            JOIN categories c ON ps.category_id = c.id
+            WHERE ps.provider_id = $1 AND ps.is_active = true
+            ORDER BY ps.created_at DESC
+        `, [id]);
+        
+        // Get portfolio items
+        const portfolioResult = await pool.query(`
+            SELECT * FROM portfolio_items 
+            WHERE provider_id = $1 
+            ORDER BY created_at DESC
+        `, [id]);
+        
+        // Get reviews
+        const reviewsResult = await pool.query(`
+            SELECT r.*, u.full_name as reviewer_name, u.profile_image as reviewer_image
+            FROM reviews r
+            JOIN users u ON r.reviewer_id = u.id
+            WHERE r.reviewee_id = $1
+            ORDER BY r.created_at DESC
+            LIMIT 20
+        `, [id]);
+        
+        // Get stats
+        const statsResult = await pool.query(`
+            SELECT 
+                COUNT(DISTINCT aj.id) as total_jobs,
+                COUNT(DISTINCT CASE WHEN aj.status = 'completed' THEN aj.id END) as completed_jobs,
+                COALESCE(SUM(aj.agreed_amount), 0) as total_earnings
+            FROM accepted_jobs aj
+            WHERE aj.provider_id = $1
+        `, [id]);
+        
+        res.json({
+            success: true,
+            provider: provider,
+            services: servicesResult.rows,
+            portfolio: portfolioResult.rows,
+            reviews: reviewsResult.rows,
+            stats: statsResult.rows[0]
+        });
+    } catch (error) {
+        console.error('Error getting provider profile:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update provider profile (authenticated provider only)
+app.put('/api/provider/profile', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can update their profile' });
+    }
+    
+    const { bio, company_name, years_experience, response_time, location } = req.body;
+    
+    try {
+        await pool.query(`
+            UPDATE users 
+            SET bio = COALESCE($1, bio),
+                company_name = COALESCE($2, company_name),
+                years_experience = COALESCE($3, years_experience),
+                response_time = COALESCE($4, response_time),
+                location = COALESCE($5, location)
+            WHERE id = $6
+        `, [bio, company_name, years_experience, response_time, location, req.user.id]);
+        
+        res.json({ success: true, message: 'Profile updated successfully' });
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add portfolio item
+app.post('/api/provider/portfolio', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can add portfolio items' });
+    }
+    
+    const { title, description, image_url } = req.body;
+    
+    if (!title) {
+        return res.status(400).json({ success: false, message: 'Title is required' });
+    }
+    
+    try {
+        const result = await pool.query(`
+            INSERT INTO portfolio_items (provider_id, title, description, image_url)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [req.user.id, title, description, image_url]);
+        
+        res.json({ success: true, portfolio: result.rows[0] });
+    } catch (error) {
+        console.error('Error adding portfolio:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete portfolio item
+app.delete('/api/provider/portfolio/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false });
+    }
+    
+    const { id } = req.params;
+    
+    try {
+        await pool.query('DELETE FROM portfolio_items WHERE id = $1 AND provider_id = $2', [id, req.user.id]);
+        res.json({ success: true, message: 'Portfolio item deleted' });
+    } catch (error) {
+        console.error('Error deleting portfolio:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Contact provider (for non-logged in users or seekers)
+app.post('/api/provider/:id/contact', async (req, res) => {
+    const { id } = req.params;
+    const { name, email, phone, message } = req.body;
+    
+    if (!name || !email || !message) {
+        return res.status(400).json({ success: false, message: 'Name, email, and message are required' });
+    }
+    
+    try {
+        await pool.query(`
+            INSERT INTO contact_requests (provider_id, name, email, phone, message)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [id, name, email, phone, message]);
+        
+        // Optional: Send email notification to provider
+        const providerEmail = await pool.query('SELECT email FROM users WHERE id = $1', [id]);
+        if (providerEmail.rows.length > 0) {
+            sendEmail(providerEmail.rows[0].email, 'contactRequest', {
+                name: name,
+                email: email,
+                message: message
+            }).catch(console.error);
+        }
+        
+        res.json({ success: true, message: 'Message sent successfully! The provider will contact you soon.' });
+    } catch (error) {
+        console.error('Error sending contact message:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get provider's contact requests (provider only)
+app.get('/api/provider/contact-requests', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false });
+    }
+    
+    try {
+        const result = await pool.query(`
+            SELECT * FROM contact_requests 
+            WHERE provider_id = $1 
+            ORDER BY created_at DESC
+        `, [req.user.id]);
+        
+        // Mark as read
+        await pool.query(`
+            UPDATE contact_requests SET is_read = true 
+            WHERE provider_id = $1 AND is_read = false
+        `, [req.user.id]);
+        
+        res.json({ success: true, requests: result.rows });
+    } catch (error) {
+        console.error('Error getting contact requests:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
