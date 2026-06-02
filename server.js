@@ -2030,6 +2030,184 @@ app.get('/api/provider/contact-requests', authenticateToken, async (req, res) =>
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== ADMIN CHAT MANAGEMENT ENDPOINTS ====================
+
+// Get all conversations for admin (with details)
+app.get('/api/admin/conversations', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { search, limit = 50, offset = 0 } = req.query;
+    
+    try {
+        let query = `
+            SELECT 
+                c.id,
+                c.job_id,
+                c.seeker_id,
+                c.provider_id,
+                c.created_at,
+                c.updated_at,
+                c.last_message,
+                c.last_message_time,
+                s.full_name as seeker_name,
+                s.email as seeker_email,
+                p.full_name as provider_name,
+                p.email as provider_email,
+                COALESCE(jp.title, 'Direct Chat') as job_title,
+                (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
+            FROM conversations c
+            JOIN users s ON c.seeker_id = s.id
+            JOIN users p ON c.provider_id = p.id
+            LEFT JOIN job_posts jp ON c.job_id = jp.id
+            WHERE 1=1
+        `;
+        
+        const params = [];
+        
+        if (search) {
+            params.push(`%${search}%`);
+            query += ` AND (s.full_name ILIKE $${params.length} OR p.full_name ILIKE $${params.length} OR s.email ILIKE $${params.length} OR p.email ILIKE $${params.length})`;
+        }
+        
+        query += ` ORDER BY c.updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit, offset);
+        
+        const result = await pool.query(query, params);
+        
+        // Get total count
+        const countResult = await pool.query('SELECT COUNT(*) FROM conversations');
+        
+        res.json({ 
+            success: true, 
+            conversations: result.rows,
+            total: parseInt(countResult.rows[0].count)
+        });
+    } catch (error) {
+        console.error('Error getting conversations:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all messages for a specific conversation (admin view)
+app.get('/api/admin/conversations/:id/messages', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { id } = req.params;
+    
+    try {
+        const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [id]);
+        if (convResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+        
+        const messagesResult = await pool.query(`
+            SELECT m.*, 
+                   u.full_name as sender_name,
+                   u.email as sender_email,
+                   u.user_type as sender_type
+            FROM messages m 
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.conversation_id = $1 
+            ORDER BY m.created_at ASC
+        `, [id]);
+        
+        res.json({ success: true, messages: messagesResult.rows, conversation: convResult.rows[0] });
+    } catch (error) {
+        console.error('Error getting messages:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Flag a message (admin or users can report)
+app.post('/api/messages/:id/flag', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+    
+    try {
+        await pool.query(
+            `UPDATE messages SET is_flagged = true, flagged_by = $1, flagged_reason = $2 WHERE id = $3`,
+            [req.user.id, reason, id]
+        );
+        
+        // Create report record
+        await pool.query(
+            `INSERT INTO chat_reports (message_id, reporter_id, reason)
+             VALUES ($1, $2, $3)`,
+            [id, req.user.id, reason]
+        );
+        
+        res.json({ success: true, message: 'Message reported successfully' });
+    } catch (error) {
+        console.error('Error flagging message:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete/block a message (admin only)
+app.delete('/api/admin/messages/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { id } = req.params;
+    
+    try {
+        await pool.query('UPDATE messages SET is_deleted = true WHERE id = $1', [id]);
+        res.json({ success: true, message: 'Message deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting message:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get chat analytics
+app.get('/api/admin/chat-analytics', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false });
+    }
+    
+    const { days = 30 } = req.query;
+    
+    try {
+        const result = await pool.query(`
+            SELECT 
+                date,
+                total_messages,
+                unique_conversations,
+                active_users,
+                flagged_messages,
+                avg_response_time
+            FROM chat_analytics
+            WHERE date > CURRENT_DATE - INTERVAL '${days} days'
+            ORDER BY date DESC
+        `);
+        
+        // Get overall stats
+        const statsResult = await pool.query(`
+            SELECT 
+                COUNT(DISTINCT c.id) as total_conversations,
+                COUNT(m.id) as total_messages,
+                COUNT(DISTINCT m.sender_id) as active_users,
+                COUNT(CASE WHEN m.is_flagged = true THEN 1 END) as flagged_messages
+            FROM conversations c
+            LEFT JOIN messages m ON c.id = m.conversation_id
+        `);
+        
+        res.json({ 
+            success: true, 
+            daily_data: result.rows,
+            overall: statsResult.rows[0]
+        });
+    } catch (error) {
+        console.error('Error getting chat analytics:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
