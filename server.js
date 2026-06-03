@@ -2629,63 +2629,120 @@ app.get('/api/public/jobs', async (req, res) => {
     }
 });
 
-// Get marketplace services (UPDATED to also show public jobs)
+// ==================== MARKETPLACE API (SHOWS BOTH SERVICES AND JOBS) ====================
+
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
+    const { category, location, min_price, max_price } = req.query;
+    
     try {
-        // Get both: provider services AND public jobs
-        const servicesResult = await pool.query(`
+        // Query for both: provider services AND admin-posted jobs
+        let query = `
             SELECT 
-                ps.id,
-                ps.title,
-                ps.description,
-                ps.price,
-                ps.price_type,
-                ps.provider_id,
-                ps.created_at,
-                u.full_name as provider_name,
-                u.location as provider_location,
-                u.rating as provider_rating,
-                u.total_reviews as provider_reviews,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.id as category_id,
-                'service' as item_type
-            FROM provider_services ps
-            JOIN users u ON ps.provider_id = u.id
-            JOIN categories c ON ps.category_id = c.id
-            WHERE ps.is_active = true AND u.is_active = true
-            
-            UNION ALL
-            
-            SELECT 
-                jp.id,
-                jp.title,
-                jp.description,
-                jp.budget as price,
-                'fixed' as price_type,
-                NULL as provider_id,
-                jp.created_at,
-                jp.external_provider_name as provider_name,
-                jp.location as provider_location,
-                0 as provider_rating,
-                0 as provider_reviews,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.id as category_id,
-                'job' as item_type
-            FROM job_posts jp
-            JOIN categories c ON jp.category_id = c.id
-            WHERE jp.is_public = true AND jp.status = 'open' AND jp.posted_by_admin = true
-            
-            ORDER BY created_at DESC
-        `);
+                id,
+                title,
+                description,
+                price,
+                price_type,
+                provider_id,
+                created_at,
+                provider_name,
+                provider_location,
+                provider_rating,
+                provider_reviews,
+                category_name,
+                category_icon,
+                category_id,
+                item_type
+            FROM (
+                -- Provider Services
+                SELECT 
+                    ps.id,
+                    ps.title,
+                    ps.description,
+                    ps.price,
+                    ps.price_type,
+                    ps.provider_id,
+                    ps.created_at,
+                    u.full_name as provider_name,
+                    u.location as provider_location,
+                    u.rating as provider_rating,
+                    u.total_reviews as provider_reviews,
+                    c.name as category_name,
+                    c.icon as category_icon,
+                    c.id as category_id,
+                    'service' as item_type
+                FROM provider_services ps
+                JOIN users u ON ps.provider_id = u.id
+                JOIN categories c ON ps.category_id = c.id
+                WHERE ps.is_active = true AND u.is_active = true
+                
+                UNION ALL
+                
+                -- Admin Posted Jobs (Public Jobs)
+                SELECT 
+                    jp.id,
+                    jp.title,
+                    jp.description,
+                    jp.budget as price,
+                    'fixed' as price_type,
+                    NULL as provider_id,
+                    jp.created_at,
+                    COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
+                    jp.location as provider_location,
+                    0 as provider_rating,
+                    0 as provider_reviews,
+                    c.name as category_name,
+                    c.icon as category_icon,
+                    c.id as category_id,
+                    'job' as item_type
+                FROM job_posts jp
+                JOIN categories c ON jp.category_id = c.id
+                WHERE jp.is_public = true 
+                  AND jp.status = 'open' 
+                  AND jp.posted_by_admin = true
+            ) all_items
+            WHERE 1=1
+        `;
         
-        console.log(`Marketplace: Found ${servicesResult.rows.length} items (services + public jobs)`);
-        res.json(servicesResult.rows);
+        const params = [];
+        let paramCount = 1;
+        
+        if (category) {
+            query += ` AND category_id = $${paramCount}`;
+            params.push(category);
+            paramCount++;
+        }
+        
+        if (location) {
+            query += ` AND provider_location ILIKE $${paramCount}`;
+            params.push(`%${location}%`);
+            paramCount++;
+        }
+        
+        if (min_price) {
+            query += ` AND price >= $${paramCount}`;
+            params.push(min_price);
+            paramCount++;
+        }
+        
+        if (max_price) {
+            query += ` AND price <= $${paramCount}`;
+            params.push(max_price);
+            paramCount++;
+        }
+        
+        query += ` ORDER BY created_at DESC`;
+        
+        const result = await pool.query(query, params);
+        
+        console.log(`Marketplace: Found ${result.rows.length} items (${result.rows.filter(r => r.item_type === 'service').length} services, ${result.rows.filter(r => r.item_type === 'job').length} jobs)`);
+        
+        res.json(result.rows);
     } catch (error) {
         console.error('Marketplace error:', error);
         res.status(500).json({ error: error.message });
     }
+});
 });
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
