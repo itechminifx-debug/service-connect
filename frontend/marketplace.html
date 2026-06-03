@@ -3,669 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace | Find Services & Jobs | Service Connect</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <title>Marketplace | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #f0f2f5;
-            color: #1e293b;
-        }
-
-        /* Navbar */
-        .navbar {
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-            color: white;
-            padding: 16px 32px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        .logo {
-            font-size: 24px;
-            font-weight: 800;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .logo span {
-            background: linear-gradient(135deg, #00c8ff, #00e8a0);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-
-        .logo i {
-            font-size: 28px;
-            color: #00e8a0;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .nav-link {
-            color: white;
-            text-decoration: none;
-            padding: 8px 18px;
-            border-radius: 10px;
-            transition: all 0.3s;
-            font-weight: 500;
-        }
-
-        .nav-link:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .nav-link.active {
-            background: linear-gradient(135deg, #00c8ff, #00e8a0);
-            color: #0f0c29;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .user-name {
-            font-weight: 500;
-        }
-
-        .user-type-badge {
-            background: rgba(255,255,255,0.2);
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-        }
-
-        .logout-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255,255,255,0.2);
-            padding: 8px 16px;
-            border-radius: 10px;
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        /* Container */
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 30px 20px;
-        }
-
-        /* Hero Banner */
-        .hero-banner {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 28px;
-            padding: 40px;
-            margin-bottom: 30px;
-            color: white;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .hero-banner::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            animation: pulse 8s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.5; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-        }
-
-        .hero-banner h1 {
-            font-size: 32px;
-            margin-bottom: 10px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .hero-banner p {
-            opacity: 0.9;
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Filters */
-        .filters-card {
-            background: white;
-            border-radius: 24px;
-            padding: 24px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        }
-
-        .filters-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #1e293b;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .filters-grid {
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .filter-input, .filter-select {
-            flex: 1;
-            min-width: 160px;
-            padding: 12px 16px;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            font-size: 14px;
-            transition: all 0.3s;
-            background: white;
-        }
-
-        .filter-input:focus, .filter-select:focus {
-            outline: none;
-            border-color: #00c8ff;
-            box-shadow: 0 0 0 3px rgba(0,200,255,0.1);
-        }
-
-        .search-btn {
-            background: linear-gradient(135deg, #00c8ff, #00e8a0);
-            border: none;
-            padding: 12px 28px;
-            border-radius: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            color: #0f0c29;
-            transition: transform 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .search-btn:hover {
-            transform: translateY(-2px);
-        }
-
-        /* Info Banner */
-        .info-banner {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            border-radius: 16px;
-            padding: 16px 24px;
-            margin-bottom: 25px;
-            color: white;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .info-banner.seeker {
-            background: linear-gradient(135deg, #10b981, #059669);
-        }
-
-        .info-banner i {
-            font-size: 20px;
-        }
-
-        /* Services Grid */
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-            gap: 24px;
-        }
-
-        /* Cards */
-        .service-card {
-            background: white;
-            border-radius: 24px;
-            padding: 24px;
-            transition: all 0.3s;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .service-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 30px -12px rgba(0,0,0,0.15);
-        }
-
-        .service-card.job-card {
-            border: 2px solid #f59e0b;
-            background: linear-gradient(135deg, #fff, #fffbeb);
-        }
-
-        .service-card.provider-card {
-            border: 1px solid #e2e8f0;
-        }
-
-        /* Card Badges */
-        .card-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 5px 12px;
-            border-radius: 30px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .badge-job {
-            background: #fef3c7;
-            color: #d97706;
-        }
-
-        .badge-service {
-            background: #dbeafe;
-            color: #2563eb;
-        }
-
-        .badge-your {
-            background: #e9d5ff;
-            color: #7c3aed;
-        }
-
-        /* Card Content */
-        .card-title {
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 12px;
-            color: #1e293b;
-            line-height: 1.3;
-        }
-
-        .provider-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-        }
-
-        .provider-name {
-            color: #64748b;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .provider-name a {
-            color: #8b5cf6;
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .provider-name a:hover {
-            text-decoration: underline;
-        }
-
-        .rating {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 13px;
-            color: #f59e0b;
-        }
-
-        .location {
-            color: #64748b;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            margin-bottom: 12px;
-        }
-
-        .price {
-            font-size: 24px;
-            font-weight: 700;
-            color: #f59e0b;
-            margin: 15px 0;
-        }
-
-        .description {
-            color: #64748b;
-            font-size: 14px;
-            line-height: 1.5;
-            margin-bottom: 20px;
-        }
-
-        /* Buttons */
-        .btn-hire {
-            width: 100%;
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .btn-bid {
-            width: 100%;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .btn-hire:hover, .btn-bid:hover {
-            transform: translateY(-2px);
-            filter: brightness(1.05);
-        }
-
-        .profile-link {
-            display: inline-block;
-            margin-top: 12px;
-            color: #8b5cf6;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            text-align: center;
-            width: 100%;
-        }
-
-        .profile-link:hover {
-            text-decoration: underline;
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            background: white;
-            border-radius: 24px;
-            color: #94a3b8;
-        }
-
-        .empty-state i {
-            font-size: 60px;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        /* Loading */
-        .loading-spinner {
-            text-align: center;
-            padding: 80px;
-        }
-
-        .loading-spinner i {
-            font-size: 48px;
-            color: #00c8ff;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(4px);
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 28px;
-            padding: 32px;
-            max-width: 500px;
-            width: 90%;
-            animation: modalFadeIn 0.3s ease;
-        }
-
-        @keyframes modalFadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .modal-content h3 {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #1e293b;
-        }
-
-        .modal-content input,
-        .modal-content textarea {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-
-        .modal-content input:focus,
-        .modal-content textarea:focus {
-            outline: none;
-            border-color: #00c8ff;
-            box-shadow: 0 0 0 3px rgba(0,200,255,0.1);
-        }
-
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            margin-top: 10px;
-        }
-
-        .modal-buttons button {
-            flex: 1;
-            padding: 14px;
-            border-radius: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-        }
-
-        .btn-submit {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-        }
-
-        .btn-cancel {
-            background: #e2e8f0;
-            color: #1e293b;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: #10b981;
-            color: white;
-            padding: 14px 24px;
-            border-radius: 16px;
-            display: none;
-            z-index: 1100;
-            animation: slideIn 0.3s ease;
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-        }
-
-        .toast.error {
-            background: #ef4444;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .navbar {
-                flex-direction: column;
-                text-align: center;
-            }
-            .services-grid {
-                grid-template-columns: 1fr;
-            }
-            .hero-banner h1 {
-                font-size: 24px;
-            }
-            .filters-grid {
-                flex-direction: column;
-            }
-            .filter-input, .filter-select, .search-btn {
-                width: 100%;
-            }
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #1e293b; }
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 24px; font-weight: 800; }
+        .logo span { color: #00e8a0; }
+        .nav-links { display: flex; gap: 15px; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; }
+        .nav-link.active { background: linear-gradient(135deg, #00c8ff, #00e8a0); color: #0f0c29; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 30px 20px; }
+        .filters { background: white; border-radius: 20px; padding: 20px; margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; }
+        .filter-select, .filter-input { padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; flex: 1; min-width: 150px; }
+        .search-btn { background: linear-gradient(135deg, #00c8ff, #00e8a0); border: none; padding: 10px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .service-card { background: white; border-radius: 20px; padding: 20px; transition: transform 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .service-card:hover { transform: translateY(-3px); }
+        .job-card { border: 2px solid #f59e0b; background: #fffbeb; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-bottom: 10px; }
+        .badge-job { background: #fef3c7; color: #d97706; }
+        .badge-service { background: #dbeafe; color: #2563eb; }
+        .card-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .price { font-weight: 700; color: #f59e0b; font-size: 20px; margin: 10px 0; }
+        .btn-hire, .btn-bid { width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; border: none; }
+        .btn-hire { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+        .btn-bid { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+        .debug-info { background: #1e293b; color: #00e8a0; padding: 15px; border-radius: 12px; margin-bottom: 20px; font-family: monospace; font-size: 12px; display: none; }
+        .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
+        .loading { text-align: center; padding: 60px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .modal-content input, .modal-content textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        @media (max-width: 768px) { .navbar { flex-direction: column; } .services-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
     <nav class="navbar">
-        <div class="logo">
-            <i class="fas fa-handshake"></i>
-            Service<span>Connect</span>
-        </div>
+        <div class="logo">Service<span>Connect</span></div>
         <div class="nav-links">
-            <a href="#" id="dashboardLink" class="nav-link"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-            <a href="#" class="nav-link active"><i class="fas fa-store"></i> Marketplace</a>
-            <a href="chat.html" class="nav-link"><i class="fas fa-comments"></i> Messages</a>
+            <a href="#" id="dashboardLink" class="nav-link">Dashboard</a>
+            <a href="#" class="nav-link active">Marketplace</a>
+            <a href="chat.html" class="nav-link">Messages</a>
         </div>
         <div class="user-info">
-            <span class="user-name" id="userName">User</span>
-            <span class="user-type-badge" id="userTypeBadge"></span>
-            <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+            <span id="userName">User</span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </nav>
 
     <div class="container">
-        <div class="hero-banner">
-            <h1><i class="fas fa-store"></i> Marketplace</h1>
-            <p>Find trusted service providers or discover job opportunities in your area</p>
-        </div>
-
-        <div id="providerBanner" class="info-banner" style="display: none;">
-            <i class="fas fa-info-circle"></i>
-            <span><strong>Provider View:</strong> You are seeing only your own services here. To add or edit services, go to Dashboard → My Services.</span>
+        <div class="filters">
+            <select id="categoryFilter" class="filter-select"><option value="">All Categories</option></select>
+            <input type="text" id="locationFilter" class="filter-input" placeholder="Location">
+            <input type="number" id="minPrice" class="filter-input" placeholder="Min Price">
+            <input type="number" id="maxPrice" class="filter-input" placeholder="Max Price">
+            <button class="search-btn" onclick="loadServices()">🔍 Search</button>
         </div>
         
-        <div id="seekerBanner" class="info-banner seeker" style="display: none;">
-            <i class="fas fa-info-circle"></i>
-            <span><strong>Customer View:</strong> Browse all services and job posts below. Click "Hire Now" for services or "Place Bid" for jobs.</span>
-        </div>
-
-        <div class="filters-card">
-            <div class="filters-title">
-                <i class="fas fa-sliders-h"></i> Filter Results
-            </div>
-            <div class="filters-grid">
-                <select id="categoryFilter" class="filter-select">
-                    <option value="">All Categories</option>
-                </select>
-                <input type="text" id="locationFilter" class="filter-input" placeholder="📍 Location">
-                <input type="number" id="minPrice" class="filter-input" placeholder="💰 Min Price">
-                <input type="number" id="maxPrice" class="filter-input" placeholder="💰 Max Price">
-                <button class="search-btn" onclick="loadServices()"><i class="fas fa-search"></i> Search</button>
-            </div>
-        </div>
+        <!-- Debug Info Box - Shows what's happening -->
+        <div id="debugBox" class="debug-info"></div>
         
         <div id="servicesGrid" class="services-grid">
-            <div class="loading-spinner">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>Loading services...</p>
-            </div>
+            <div class="loading">Loading services...</div>
         </div>
     </div>
 
     <!-- Hire Modal -->
     <div id="hireModal" class="modal">
         <div class="modal-content">
-            <h3><i class="fas fa-handshake"></i> Hire Provider</h3>
-            <input type="number" id="hireAmount" placeholder="Agreed Amount (GHS) *">
-            <textarea id="hireMessage" rows="3" placeholder="Message to provider..."></textarea>
-            <div class="modal-buttons">
-                <button class="btn-submit" onclick="confirmHire()"><i class="fas fa-paper-plane"></i> Send Request</button>
-                <button class="btn-cancel" onclick="closeHireModal()">Cancel</button>
-            </div>
+            <h3>📝 Hire Provider</h3>
+            <input type="number" id="hireAmount" placeholder="Agreed Amount (GHS)">
+            <textarea id="hireMessage" rows="3" placeholder="Message..."></textarea>
+            <button class="btn-hire" onclick="confirmHire()" style="margin-top:0;">Send Request</button>
+            <button onclick="closeHireModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px;">Cancel</button>
         </div>
     </div>
 
     <!-- Bid Modal -->
     <div id="bidModal" class="modal">
         <div class="modal-content">
-            <h3><i class="fas fa-gavel"></i> Place Bid on Job</h3>
-            <input type="number" id="bidAmount" placeholder="Your Bid Amount (GHS) *">
-            <input type="number" id="bidDays" placeholder="Estimated Days to Complete">
-            <textarea id="bidMessage" rows="3" placeholder="Message to client..."></textarea>
-            <div class="modal-buttons">
-                <button class="btn-submit" onclick="confirmBid()"><i class="fas fa-check"></i> Submit Bid</button>
-                <button class="btn-cancel" onclick="closeBidModal()">Cancel</button>
-            </div>
+            <h3>💰 Place Bid</h3>
+            <input type="number" id="bidAmount" placeholder="Your bid amount (GHS)">
+            <input type="number" id="bidDays" placeholder="Estimated days">
+            <textarea id="bidMessage" rows="3" placeholder="Message..."></textarea>
+            <button class="btn-bid" onclick="confirmBid()" style="margin-top:0;">Submit Bid</button>
+            <button onclick="closeBidModal()" style="margin-top:10px; width:100%; padding:12px; background:#e2e8f0; border:none; border-radius:12px;">Cancel</button>
         </div>
     </div>
 
@@ -683,30 +110,23 @@
         try { 
             user = JSON.parse(localStorage.getItem('user')); 
             document.getElementById('userName').innerText = user?.full_name || 'User';
-            document.getElementById('userTypeBadge').innerText = user?.user_type === 'seeker' ? '👤 Customer' : '🔧 Provider';
-            
             const dashboardLink = document.getElementById('dashboardLink');
-            if (user?.user_type === 'seeker') {
-                dashboardLink.href = 'seeker-dashboard.html';
-                document.getElementById('seekerBanner').style.display = 'flex';
-            } else {
-                dashboardLink.href = 'provider-dashboard.html';
-                document.getElementById('providerBanner').style.display = 'flex';
-            }
+            if (user?.user_type === 'seeker') dashboardLink.href = 'seeker-dashboard.html';
+            else if (user?.user_type === 'provider') dashboardLink.href = 'provider-dashboard.html';
+            else dashboardLink.href = 'admin-dashboard.html';
         } catch(e) {}
+        
+        function showDebug(message, isError = false) {
+            const debugBox = document.getElementById('debugBox');
+            debugBox.style.display = 'block';
+            debugBox.style.background = isError ? '#450a0a' : '#1e293b';
+            debugBox.innerHTML = `<i class="fas fa-bug"></i> ${message}`;
+            setTimeout(() => { debugBox.style.display = 'none'; }, 5000);
+        }
         
         async function apiCall(endpoint, options = {}) {
             const response = await fetch(API_URL + endpoint, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers } });
             return response.json();
-        }
-        
-        function renderStars(rating) {
-            const numRating = parseFloat(rating) || 0;
-            const fullStars = Math.floor(numRating);
-            let stars = '';
-            for (let i = 0; i < fullStars; i++) stars += '<i class="fas fa-star"></i>';
-            for (let i = fullStars; i < 5; i++) stars += '<i class="far fa-star"></i>';
-            return `<div class="rating">${stars} <span style="margin-left: 6px;">(${numRating.toFixed(1)})</span></div>`;
         }
         
         async function loadCategories() {
@@ -714,7 +134,7 @@
                 const categories = await apiCall('/api/categories');
                 const select = document.getElementById('categoryFilter');
                 if (categories && categories.length > 0) {
-                    select.innerHTML = '<option value="">📋 All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                    select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
                 }
             } catch (error) {
                 console.error('Error loading categories:', error);
@@ -723,228 +143,163 @@
         
         async function loadServices() {
             const container = document.getElementById('servicesGrid');
-            container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Loading...</p></div>';
+            container.innerHTML = '<div class="loading">Loading services...</div>';
+            showDebug('Fetching data from server...');
             
             try {
+                const items = await apiCall('/api/services/marketplace');
+                
+                // Show debug info on page
+                if (!items) {
+                    showDebug('❌ No response from server', true);
+                    container.innerHTML = '<div class="empty-state">No response from server. Please refresh.</div>';
+                    return;
+                }
+                
+                const serviceCount = items.filter(i => i.type === 'service').length;
+                const jobCount = items.filter(i => i.type === 'job').length;
+                showDebug(`✅ Found ${items.length} total items (${serviceCount} services, ${jobCount} jobs)`);
+                
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No services or jobs available.</div>';
+                    return;
+                }
+                
+                // Apply filters
+                let filteredItems = [...items];
                 const category = document.getElementById('categoryFilter').value;
                 const location = document.getElementById('locationFilter').value;
                 const minPrice = document.getElementById('minPrice').value;
                 const maxPrice = document.getElementById('maxPrice').value;
                 
-                let items = await apiCall('/api/services/marketplace');
-                console.log('Marketplace items:', items);
+                if (category) filteredItems = filteredItems.filter(i => i.category_id == category);
+                if (location) filteredItems = filteredItems.filter(i => (i.provider_location || '').toLowerCase().includes(location.toLowerCase()));
+                if (minPrice) filteredItems = filteredItems.filter(i => parseFloat(i.price) >= parseFloat(minPrice));
+                if (maxPrice) filteredItems = filteredItems.filter(i => parseFloat(i.price) <= parseFloat(maxPrice));
                 
-                if (!items || items.length === 0) {
-                    container.innerHTML = '<div class="empty-state"><i class="fas fa-box-open"></i><p>No services or jobs available.</p></div>';
-                    return;
-                }
-                
-                // Apply filters
-                if (category) {
-                    items = items.filter(i => i.category_id == category);
-                }
-                if (location) {
-                    items = items.filter(i => (i.provider_location || '').toLowerCase().includes(location.toLowerCase()));
-                }
-                if (minPrice) {
-                    items = items.filter(i => parseFloat(i.price) >= parseFloat(minPrice));
-                }
-                if (maxPrice) {
-                    items = items.filter(i => parseFloat(i.price) <= parseFloat(maxPrice));
-                }
-                
-                // PROVIDER VIEW - Only show their own services
+                // PROVIDER VIEW - Only their own services
                 if (user?.user_type === 'provider') {
-                    const myItems = items.filter(i => i.provider_id === user.id && i.type !== 'job');
+                    const myItems = filteredItems.filter(i => i.provider_id === user.id && i.type !== 'job');
                     
                     if (myItems.length === 0) {
-                        container.innerHTML = '<div class="empty-state"><i class="fas fa-tools"></i><p>You haven\'t added any services yet.<br>Go to Dashboard → My Services to add your first service!</p></div>';
+                        container.innerHTML = '<div class="empty-state">You haven\'t added any services yet.</div>';
                         return;
                     }
                     
                     container.innerHTML = myItems.map(item => `
                         <div class="service-card">
-                            <div class="card-badge badge-your">
-                                <i class="fas fa-user-check"></i> YOUR SERVICE
-                            </div>
+                            <div class="badge" style="background:#e9d5ff; color:#7c3aed;">YOUR SERVICE</div>
                             <div class="card-title">${escapeHtml(item.title)}</div>
                             <div class="price">💰 GHS ${item.price || 'Negotiable'}</div>
-                            <div class="description">${escapeHtml(item.description?.substring(0, 100) || 'No description')}${item.description?.length > 100 ? '...' : ''}</div>
-                            <a href="provider-profile.html?id=${user.id}" class="profile-link"><i class="fas fa-external-link-alt"></i> View My Public Profile</a>
+                            <div class="description">${escapeHtml(item.description?.substring(0, 100) || '')}</div>
+                            <a href="provider-profile.html?id=${user.id}" style="display:block; margin-top:10px; color:#8b5cf6; text-align:center;">View My Profile →</a>
                         </div>
                     `).join('');
                     return;
                 }
                 
-                // SEEKER VIEW - Show ALL services AND jobs
-                const services = items.filter(i => i.type === 'service');
-                const jobs = items.filter(i => i.type === 'job');
-                
-                console.log(`Seeker view: ${services.length} services, ${jobs.length} jobs`);
+                // SEEKER VIEW - Show everything
+                const services = filteredItems.filter(i => i.type === 'service');
+                const jobs = filteredItems.filter(i => i.type === 'job');
                 
                 if (services.length === 0 && jobs.length === 0) {
-                    container.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found. Try different filters!</p></div>';
+                    container.innerHTML = '<div class="empty-state">No results found. Try different filters!</div>';
                     return;
                 }
                 
-                // Combine: jobs first, then services
                 const allItems = [...jobs, ...services];
                 
                 container.innerHTML = allItems.map(item => {
                     if (item.type === 'job') {
                         return `
                             <div class="service-card job-card">
-                                <div class="card-badge badge-job">
-                                    <i class="fas fa-briefcase"></i> JOB POST
-                                </div>
+                                <div class="badge badge-job">📋 JOB POST</div>
                                 <div class="card-title">${escapeHtml(item.title)}</div>
-                                <div class="provider-info">
-                                    <span class="provider-name"><i class="fas fa-building"></i> Provider: ${escapeHtml(item.provider_name || 'Service Connect')}</span>
-                                </div>
-                                <div class="location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.provider_location || 'Location specified')}</div>
+                                <div class="provider-name" style="color:#64748b; font-size:14px;">🏢 Provider: ${escapeHtml(item.provider_name)}</div>
                                 <div class="price">💰 Budget: GHS ${item.price || 'Negotiable'}</div>
-                                <div class="description">${escapeHtml(item.description?.substring(0, 100) || '')}${item.description?.length > 100 ? '...' : ''}</div>
-                                <button class="btn-bid" onclick="openBidModal(${item.id})"><i class="fas fa-gavel"></i> Place Bid</button>
+                                <div class="description">${escapeHtml(item.description?.substring(0, 100) || '')}</div>
+                                <button class="btn-bid" onclick="openBidModal(${item.id})">💰 Place Bid</button>
                             </div>
                         `;
                     } else {
                         return `
-                            <div class="service-card provider-card">
-                                <div class="card-badge badge-service">
-                                    <i class="fas fa-tools"></i> SERVICE
-                                </div>
+                            <div class="service-card">
+                                <div class="badge badge-service">🔧 SERVICE</div>
                                 <div class="card-title">${escapeHtml(item.title)}</div>
-                                <div class="provider-info">
-                                    <span class="provider-name"><i class="fas fa-user"></i> <a href="provider-profile.html?id=${item.provider_id}">${escapeHtml(item.provider_name)}</a></span>
-                                    ${renderStars(item.provider_rating)}
+                                <div class="provider-name" style="color:#64748b; font-size:14px;">
+                                    👤 <a href="provider-profile.html?id=${item.provider_id}" style="color:#8b5cf6;">${escapeHtml(item.provider_name)}</a>
                                 </div>
-                                <div class="location"><i class="fas fa-map-marker-alt"></i> ${item.provider_location || 'Location not specified'}</div>
-                                <div class="price">💰 GHS ${item.price || 'Negotiable'} ${item.price_type === 'hourly' ? '/hour' : ''}</div>
-                                <div class="description">${escapeHtml(item.description?.substring(0, 100) || '')}${item.description?.length > 100 ? '...' : ''}</div>
-                                <button class="btn-hire" onclick="openHireModal(${item.id}, ${item.provider_id})"><i class="fas fa-handshake"></i> Hire Now</button>
-                                <a href="provider-profile.html?id=${item.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile</a>
+                                <div class="price">💰 GHS ${item.price || 'Negotiable'}</div>
+                                <div class="description">${escapeHtml(item.description?.substring(0, 100) || '')}</div>
+                                <button class="btn-hire" onclick="openHireModal(${item.id}, ${item.provider_id})">📞 Hire Now</button>
+                                <a href="provider-profile.html?id=${item.provider_id}" style="display:block; margin-top:10px; color:#8b5cf6; text-align:center; font-size:13px;">View Profile →</a>
                             </div>
                         `;
                     }
                 }).join('');
                 
             } catch (error) {
-                console.error('Error loading marketplace:', error);
-                container.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Error loading content. Please refresh.</p></div>';
+                console.error('Error:', error);
+                showDebug(`❌ Error: ${error.message}`, true);
+                container.innerHTML = '<div class="empty-state">Error loading content. Please refresh.</div>';
             }
         }
         
-        // ============ HIRE SERVICE ============
+        // Hire Service
         function openHireModal(serviceId, providerId) {
             selectedService = { serviceId, providerId };
-            document.getElementById('hireAmount').value = '';
-            document.getElementById('hireMessage').value = '';
             document.getElementById('hireModal').style.display = 'flex';
         }
-        
-        function closeHireModal() {
-            document.getElementById('hireModal').style.display = 'none';
-            selectedService = null;
-        }
+        function closeHireModal() { document.getElementById('hireModal').style.display = 'none'; }
         
         async function confirmHire() {
             const amount = document.getElementById('hireAmount').value;
-            const message = document.getElementById('hireMessage').value;
-            
-            if (!amount || amount <= 0) {
-                showToast('Please enter a valid amount', 'error');
-                return;
-            }
-            
-            showToast('Sending request...', 'info');
-            
+            if (!amount) { showToast('Enter amount', 'error'); return; }
             const result = await apiCall('/api/direct-hire', {
                 method: 'POST',
                 body: JSON.stringify({
                     service_id: selectedService.serviceId,
                     provider_id: selectedService.providerId,
                     agreed_amount: parseFloat(amount),
-                    message: message
+                    message: document.getElementById('hireMessage').value
                 })
             });
-            
-            if (result.success) {
-                showToast('✅ Hire request sent successfully!', 'success');
-                closeHireModal();
-            } else {
-                showToast(result.message || 'Failed to send request', 'error');
-            }
+            if (result.success) { showToast('Hire request sent!', 'success'); closeHireModal(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
         
-        // ============ BID ON JOB ============
-        function openBidModal(jobId) {
-            currentJobId = jobId;
-            document.getElementById('bidAmount').value = '';
-            document.getElementById('bidDays').value = '';
-            document.getElementById('bidMessage').value = '';
-            document.getElementById('bidModal').style.display = 'flex';
-        }
-        
-        function closeBidModal() {
-            document.getElementById('bidModal').style.display = 'none';
-            currentJobId = null;
-        }
+        // Bid on Job
+        function openBidModal(jobId) { currentJobId = jobId; document.getElementById('bidModal').style.display = 'flex'; }
+        function closeBidModal() { document.getElementById('bidModal').style.display = 'none'; }
         
         async function confirmBid() {
             const amount = document.getElementById('bidAmount').value;
-            const days = document.getElementById('bidDays').value;
-            const message = document.getElementById('bidMessage').value;
-            
-            if (!amount || amount <= 0) {
-                showToast('Please enter a valid bid amount', 'error');
-                return;
-            }
-            
-            showToast('Submitting bid...', 'info');
-            
+            if (!amount) { showToast('Enter bid amount', 'error'); return; }
             const result = await apiCall(`/api/jobs/${currentJobId}/bids`, {
                 method: 'POST',
                 body: JSON.stringify({
                     amount: parseFloat(amount),
-                    estimated_days: days || 1,
-                    message: message
+                    estimated_days: document.getElementById('bidDays').value || 1,
+                    message: document.getElementById('bidMessage').value
                 })
             });
-            
-            if (result.success) {
-                showToast('✅ Bid placed successfully!', 'success');
-                closeBidModal();
-            } else {
-                showToast(result.message || 'Failed to place bid', 'error');
-            }
+            if (result.success) { showToast('Bid placed!', 'success'); closeBidModal(); }
+            else { showToast(result.message || 'Failed', 'error'); }
         }
         
         function showToast(msg, type) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
-            toast.className = 'toast';
-            if (type === 'error') toast.classList.add('error');
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
             toast.style.display = 'block';
-            setTimeout(() => {
-                toast.style.display = 'none';
-            }, 3000);
+            setTimeout(() => toast.style.display = 'none', 3000);
         }
         
-        function logout() { 
-            localStorage.clear(); 
-            window.location.href = 'index.html'; 
-        }
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+        function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
         
-        function escapeHtml(str) { 
-            if (!str) return ''; 
-            return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); 
-        }
-        
-        // Initialize
         loadCategories();
         loadServices();
-        
-        // Auto-refresh every 30 seconds
         setInterval(loadServices, 30000);
     </script>
 </body>
