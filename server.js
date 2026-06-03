@@ -2745,7 +2745,37 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
+// Debug endpoint - check if jobs exist (requires login)
+app.get('/api/debug/marketplace-data', authenticateToken, async (req, res) => {
+    try {
+        // Get services count
+        const servicesCount = await pool.query('SELECT COUNT(*) FROM provider_services WHERE is_active = true');
+        
+        // Get public jobs count
+        const jobsCount = await pool.query(`
+            SELECT COUNT(*) FROM job_posts 
+            WHERE is_public = true AND status = 'open'
+        `);
+        
+        // Get sample jobs
+        const sampleJobs = await pool.query(`
+            SELECT id, title, posted_by_admin, is_public, status 
+            FROM job_posts 
+            WHERE is_public = true 
+            LIMIT 5
+        `);
+        
+        res.json({
+            success: true,
+            services_count: parseInt(servicesCount.rows[0].count),
+            jobs_count: parseInt(jobsCount.rows[0].count),
+            sample_jobs: sampleJobs.rows,
+            message: 'Make sure you are logged in to view marketplace'
+        });
+    } catch (error) {
+        res.json({ error: error.message });
+    }
+});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
