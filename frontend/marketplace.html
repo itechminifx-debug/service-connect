@@ -24,7 +24,7 @@
         .service-card { background: white; border-radius: 20px; padding: 20px; transition: transform 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .service-card:hover { transform: translateY(-3px); }
         .service-category { display: inline-block; background: rgba(0,200,255,0.1); color: #00c8ff; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-bottom: 12px; }
-        .job-badge { background: #f59e0b; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 8px; }
+        .job-badge { background: #f59e0b; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 8px; display: inline-block; }
         .service-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
         .provider-name { font-size: 14px; color: #64748b; margin-bottom: 10px; }
         .service-price { font-weight: 700; color: #f59e0b; font-size: 20px; margin: 10px 0; }
@@ -44,6 +44,7 @@
         .my-service-badge { display: inline-block; background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; margin-left: 10px; }
         .loading-spinner { text-align: center; padding: 60px; }
         .loading-spinner i { font-size: 40px; color: #00c8ff; }
+        .job-card-border { border: 2px solid #f59e0b; }
         @media (max-width: 768px) { .navbar { flex-direction: column; } .services-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -68,7 +69,7 @@
         </div>
         
         <div id="seekerBanner" class="info-banner" style="display: none; background: linear-gradient(135deg, #10b981, #059669);">
-            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse all services and hire providers directly.
+            <i class="fas fa-info-circle"></i> You are viewing as a <strong>Customer (Seeker)</strong>. Browse all services and job posts.
         </div>
 
         <div class="filters">
@@ -87,7 +88,7 @@
         </div>
     </div>
 
-    <!-- Hire Modal (Only for Seekers - Services) -->
+    <!-- Hire Modal (For Services) -->
     <div id="hireModal" class="modal">
         <div class="modal-content">
             <h3 style="margin-bottom:20px;">📝 Hire Provider</h3>
@@ -98,7 +99,7 @@
         </div>
     </div>
 
-    <!-- Bid Modal (For Jobs posted by Admin) -->
+    <!-- Bid Modal (For Jobs) -->
     <div id="bidModal" class="modal">
         <div class="modal-content">
             <h3 style="margin-bottom:20px;">💰 Place Bid on Job</h3>
@@ -117,6 +118,7 @@
         let token = localStorage.getItem('token');
         let user = null;
         let selectedItem = null;
+        let currentJobId = null;
         
         if (!token) window.location.href = 'index.html';
         
@@ -186,17 +188,26 @@
             if (minPrice) url += `min_price=${minPrice}&`;
             if (maxPrice) url += `max_price=${maxPrice}&`;
             
+            console.log('Fetching from:', url);
+            console.log('User type:', user?.user_type);
+            
             const items = await apiCall(url);
             const container = document.getElementById('servicesGrid');
+            
+            console.log('Items received:', items);
+            console.log('Total items:', items?.length);
             
             if (!items || items.length === 0) { 
                 container.innerHTML = '<div class="empty-state">No services or jobs found. Try different filters!</div>'; 
                 return; 
             }
             
-            // PROVIDER VIEW - Only show their own services
+            // ============ PROVIDER VIEW ============
             if (user?.user_type === 'provider') {
+                // Only show their own services (filter out jobs)
                 const myServices = items.filter(s => s.provider_id === user.id && s.item_type !== 'job');
+                
+                console.log('Provider view - my services:', myServices.length);
                 
                 if (myServices.length === 0) {
                     container.innerHTML = '<div class="empty-state">🔧 You haven\'t added any services yet. Go to your Dashboard → My Services to add your first service!</div>';
@@ -219,11 +230,24 @@
                 return;
             }
             
-            // SEEKER VIEW - Show ALL services AND jobs
-            container.innerHTML = items.map(item => {
+            // ============ SEEKER VIEW ============
+            // Show ALL services AND ALL jobs
+            const services = items.filter(i => i.item_type === 'service');
+            const jobs = items.filter(i => i.item_type === 'job');
+            
+            console.log('Seeker view - services:', services.length, 'jobs:', jobs.length);
+            
+            if (services.length === 0 && jobs.length === 0) {
+                container.innerHTML = '<div class="empty-state">No services or jobs available. Check back later!</div>';
+                return;
+            }
+            
+            // Display jobs first, then services
+            const allDisplayItems = [...jobs, ...services];
+            
+            container.innerHTML = allDisplayItems.map(item => {
                 if (item.item_type === 'job') {
                     // Display as JOB (from admin posts)
-                    const ratingValue = item.provider_rating ? parseFloat(item.provider_rating).toFixed(1) : 'New';
                     return `
                         <div class="service-card" style="border: 2px solid #f59e0b;">
                             <span class="service-category">
@@ -257,7 +281,7 @@
                             <div class="service-price">💰 GHS ${item.price || 'Negotiable'} ${item.price_type === 'hourly' ? '/hour' : ''}</div>
                             <div class="service-details" style="font-size:13px; color:#64748b; margin-bottom:10px;">${escapeHtml(item.description?.substring(0, 100) || '')}</div>
                             <button class="hire-btn" onclick="openHireModal(${item.id}, ${item.provider_id}, '${escapeHtml(item.title)}')">📞 Hire Now</button>
-                            <a href="provider-profile.html?id=${item.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Full Profile →</a>
+                            <a href="provider-profile.html?id=${item.provider_id}" class="profile-link"><i class="fas fa-user-circle"></i> View Profile →</a>
                         </div>
                     `;
                 }
@@ -310,8 +334,6 @@
         }
         
         // For bidding on a job (admin-posted job)
-        let currentJobId = null;
-        
         function openBidModal(jobId, jobTitle) {
             if (user?.user_type !== 'seeker') {
                 showToast('Only seekers can place bids on jobs', 'error');
