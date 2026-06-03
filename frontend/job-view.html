@@ -37,6 +37,7 @@
         .copy-btn { background: #64748b; color: white; }
         
         .loading-state { text-align: center; padding: 60px; }
+        .loading-state i { font-size: 40px; color: #00c8ff; }
         .error-state { text-align: center; padding: 60px; color: #ef4444; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
         
@@ -54,7 +55,7 @@
 
     <div class="container" id="container">
         <div class="loading-state">
-            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <i class="fas fa-spinner fa-spin"></i>
             <p>Loading job details...</p>
         </div>
     </div>
@@ -72,8 +73,16 @@
 
         async function loadJob() {
             try {
+                console.log('Fetching job with token:', token);
                 const response = await fetch(`${API_URL}/api/public/job/${token}`);
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
+                console.log('Job data:', data);
                 
                 if (!data.success) {
                     document.getElementById('container').innerHTML = `
@@ -99,6 +108,7 @@
                             <p><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> ${escapeHtml(job.location || 'Not specified')}</p>
                             <p style="margin-top: 10px;"><i class="fas fa-calendar"></i> <strong>Preferred Date:</strong> ${job.preferred_date || 'Flexible'}</p>
                             <p style="margin-top: 10px;"><i class="fas fa-eye"></i> <strong>Views:</strong> ${job.view_count || 0}</p>
+                            ${job.external_provider_name ? `<p style="margin-top: 10px;"><i class="fas fa-user"></i> <strong>Provider:</strong> ${escapeHtml(job.external_provider_name)}</p>` : ''}
                         </div>
                         
                         <div class="job-description">
@@ -127,13 +137,20 @@
                         
                         <div style="text-align: center; margin-top: 20px;">
                             <p style="color: #64748b;">👇 Interested in this job?</p>
-                            <a href="index.html" class="view-btn" style="display: inline-block; margin-top: 10px; padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 12px;">Sign up to apply →</a>
+                            <a href="index.html" style="display: inline-block; margin-top: 10px; padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 12px;">Sign up to apply →</a>
                         </div>
                     </div>
                 `;
             } catch (error) {
                 console.error('Error loading job:', error);
-                document.getElementById('container').innerHTML = '<div class="error-state">Error loading job. Please try again.</div>';
+                document.getElementById('container').innerHTML = `
+                    <div class="error-state">
+                        <i class="fas fa-exclamation-triangle fa-3x"></i>
+                        <p>Error loading job: ${error.message}</p>
+                        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #00c8ff; border: none; border-radius: 12px; cursor: pointer;">Retry</button>
+                        <a href="job-board.html" style="display: inline-block; margin-top: 10px;">← Back to Job Board</a>
+                    </div>
+                `;
             }
         }
 
