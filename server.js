@@ -1372,7 +1372,7 @@ app.get('/api/conversations/:conversationId/messages', authenticateToken, async 
         );
         
         await pool.query(
-            `UPDATE messages SET is_read = true, read_at = CURRENT_TIMESTAMP
+            `UPDATE messages SET is_read = true 
              WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
             [conversationId, req.user.id]
         );
