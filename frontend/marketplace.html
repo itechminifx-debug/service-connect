@@ -32,7 +32,7 @@
         .btn-hire, .btn-bid { width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; border: none; }
         .btn-hire { background: linear-gradient(135deg, #10b981, #059669); color: white; }
         .btn-bid { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
-        .debug-info { background: #1e293b; color: #00e8a0; padding: 15px; border-radius: 12px; margin-bottom: 20px; font-family: monospace; font-size: 12px; display: none; }
+        .debug-info { background: #1e293b; color: #00e8a0; padding: 15px; border-radius: 12px; margin-bottom: 20px; font-family: monospace; font-size: 12px; }
         .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
         .loading { text-align: center; padding: 60px; }
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
@@ -65,7 +65,6 @@
             <button class="search-btn" onclick="loadServices()">🔍 Search</button>
         </div>
         
-        <!-- Debug Info Box - Shows what's happening -->
         <div id="debugBox" class="debug-info"></div>
         
         <div id="servicesGrid" class="services-grid">
@@ -121,7 +120,6 @@
             debugBox.style.display = 'block';
             debugBox.style.background = isError ? '#450a0a' : '#1e293b';
             debugBox.innerHTML = `<i class="fas fa-bug"></i> ${message}`;
-            setTimeout(() => { debugBox.style.display = 'none'; }, 5000);
         }
         
         async function apiCall(endpoint, options = {}) {
@@ -149,21 +147,16 @@
             try {
                 const items = await apiCall('/api/services/marketplace');
                 
-                // Show debug info on page
-                if (!items) {
-                    showDebug('❌ No response from server', true);
-                    container.innerHTML = '<div class="empty-state">No response from server. Please refresh.</div>';
-                    return;
-                }
-                
-                const serviceCount = items.filter(i => i.type === 'service').length;
-                const jobCount = items.filter(i => i.type === 'job').length;
-                showDebug(`✅ Found ${items.length} total items (${serviceCount} services, ${jobCount} jobs)`);
-                
-                if (items.length === 0) {
+                if (!items || items.length === 0) {
+                    showDebug('❌ No items found in database', true);
                     container.innerHTML = '<div class="empty-state">No services or jobs available.</div>';
                     return;
                 }
+                
+                // Count using item_type
+                const serviceCount = items.filter(i => i.item_type === 'service').length;
+                const jobCount = items.filter(i => i.item_type === 'job').length;
+                showDebug(`✅ Found ${items.length} total items (${serviceCount} services, ${jobCount} jobs)`);
                 
                 // Apply filters
                 let filteredItems = [...items];
@@ -179,7 +172,7 @@
                 
                 // PROVIDER VIEW - Only their own services
                 if (user?.user_type === 'provider') {
-                    const myItems = filteredItems.filter(i => i.provider_id === user.id && i.type !== 'job');
+                    const myItems = filteredItems.filter(i => i.provider_id === user.id && i.item_type !== 'job');
                     
                     if (myItems.length === 0) {
                         container.innerHTML = '<div class="empty-state">You haven\'t added any services yet.</div>';
@@ -198,11 +191,11 @@
                     return;
                 }
                 
-                // SEEKER VIEW - Show everything
-                const services = filteredItems.filter(i => i.type === 'service');
-                const jobs = filteredItems.filter(i => i.type === 'job');
+                // SEEKER VIEW - Show everything (jobs first, then services)
+                const jobs = filteredItems.filter(i => i.item_type === 'job');
+                const services = filteredItems.filter(i => i.item_type === 'service');
                 
-                if (services.length === 0 && jobs.length === 0) {
+                if (jobs.length === 0 && services.length === 0) {
                     container.innerHTML = '<div class="empty-state">No results found. Try different filters!</div>';
                     return;
                 }
@@ -210,7 +203,7 @@
                 const allItems = [...jobs, ...services];
                 
                 container.innerHTML = allItems.map(item => {
-                    if (item.type === 'job') {
+                    if (item.item_type === 'job') {
                         return `
                             <div class="service-card job-card">
                                 <div class="badge badge-job">📋 JOB POST</div>
