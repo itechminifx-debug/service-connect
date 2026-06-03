@@ -2398,7 +2398,9 @@ app.get('/api/admin/chat-analytics', authenticateToken, async (req, res) => {
 });
 // ==================== ADMIN JOB POSTING (For Providers) ====================
 
-// Admin creates a job for a provider
+// ==================== ADMIN JOB POSTING FOR PROVIDERS ====================
+
+// Admin creates a job for a provider (Public Job Board)
 app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
@@ -2416,7 +2418,7 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
     
     try {
         // Generate unique share token
-        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now();
+        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
         
         const result = await pool.query(
             `INSERT INTO job_posts (
@@ -2431,10 +2433,12 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
              shareToken]
         );
         
+        const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
+        
         res.json({ 
             success: true, 
             job: result.rows[0],
-            shareable_link: `${process.env.APP_URL}/job/${shareToken}`
+            shareable_link: shareableUrl
         });
     } catch (error) {
         console.error('Admin create job error:', error);
@@ -2442,7 +2446,95 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
     }
 });
 
-// Get public job by share token (no authentication required)
+// Get all public jobs (for admin to see)
+app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { public_only, search, status, limit = 100 } = req.query;
+    
+    try {
+        let query = `
+            SELECT jp.*, c.name as category_name, c.icon as category_icon,
+                   u.full_name as seeker_name
+            FROM job_posts jp
+            LEFT JOIN categories c ON jp.category_id = c.id
+            LEFT JOIN users u ON jp.seeker_id = u.id
+            WHERE 1=1
+        `;
+        let params = [];
+        let paramCount = 1;
+        
+        if (public_only === 'true') {
+            query += ` AND jp.is_public = true`;
+        }
+        
+        if (search) {
+            query += ` AND jp.title ILIKE $${paramCount}`;
+            params.push(`%${search}%`);
+            paramCount++;
+        }
+        
+        if (status) {
+            query += ` AND jp.status = $${paramCount}`;
+            params.push(status);
+            paramCount++;
+        }
+        
+        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
+        params.push(limit);
+        
+        const result = await pool.query(query, params);
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        console.error('Get admin jobs error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update job (admin)
+app.put('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false });
+    }
+    
+    const { id } = req.params;
+    const { title, description, budget, status } = req.body;
+    
+    try {
+        await pool.query(
+            `UPDATE job_posts 
+             SET title = COALESCE($1, title),
+                 description = COALESCE($2, description),
+                 budget = COALESCE($3, budget),
+                 status = COALESCE($4, status)
+             WHERE id = $5`,
+            [title, description, budget, status, id]
+        );
+        res.json({ success: true, message: 'Job updated successfully' });
+    } catch (error) {
+        console.error('Update job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete job (admin)
+app.delete('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false });
+    }
+    
+    const { id } = req.params;
+    
+    try {
+        await pool.query('DELETE FROM job_posts WHERE id = $1', [id]);
+        res.json({ success: true, message: 'Job deleted successfully' });
+    } catch (error) {
+        console.error('Delete job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+    // Get public job by share token (no authentication required)
 app.get('/api/public/job/:token', async (req, res) => {
     const { token } = req.params;
     
@@ -2451,7 +2543,7 @@ app.get('/api/public/job/:token', async (req, res) => {
             `SELECT jp.*, c.name as category_name, c.icon as category_icon
              FROM job_posts jp
              JOIN categories c ON jp.category_id = c.id
-             WHERE jp.share_token = $1 AND jp.is_public = true AND jp.status = 'open'`,
+             WHERE jp.share_token = $1 AND jp.is_public = true`,
             [token]
         );
         
@@ -2469,7 +2561,7 @@ app.get('/api/public/job/:token', async (req, res) => {
     }
 });
 
-// Get all public jobs (for the job board)
+// Get all public jobs (for job board)
 app.get('/api/public/jobs', async (req, res) => {
     const { category, location, limit = 20 } = req.query;
     
@@ -2481,17 +2573,20 @@ app.get('/api/public/jobs', async (req, res) => {
             WHERE jp.is_public = true AND jp.status = 'open'
         `;
         let params = [];
+        let paramCount = 1;
         
         if (category) {
+            query += ` AND jp.category_id = $${paramCount}`;
             params.push(category);
-            query += ` AND jp.category_id = $${params.length}`;
+            paramCount++;
         }
         if (location) {
+            query += ` AND jp.location ILIKE $${paramCount}`;
             params.push(`%${location}%`);
-            query += ` AND jp.location ILIKE $${params.length}`;
+            paramCount++;
         }
         
-        query += ` ORDER BY jp.created_at DESC LIMIT $${params.length + 1}`;
+        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
         params.push(limit);
         
         const result = await pool.query(query, params);
@@ -2501,70 +2596,6 @@ app.get('/api/public/jobs', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-
-// Provider claims their job (by verifying phone/email)
-app.post('/api/jobs/claim', async (req, res) => {
-    const { share_token, phone, email } = req.body;
-    
-    try {
-        const jobResult = await pool.query(
-            `SELECT * FROM job_posts WHERE share_token = $1`,
-            [share_token]
-        );
-        
-        if (jobResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found' });
-        }
-        
-        const job = jobResult.rows[0];
-        
-        // Verify provider identity
-        if (job.external_provider_phone && job.external_provider_phone !== phone) {
-            return res.status(403).json({ success: false, message: 'Phone number does not match' });
-        }
-        
-        if (job.external_provider_email && job.external_provider_email !== email) {
-            return res.status(403).json({ success: false, message: 'Email does not match' });
-        }
-        
-        // Check if user exists with this email
-        const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-        
-        let providerId;
-        if (userResult.rows.length > 0) {
-            providerId = userResult.rows[0].id;
-            // Update user type to provider if not already
-            await pool.query('UPDATE users SET user_type = $1 WHERE id = $2', ['provider', providerId]);
-        } else {
-            // Create temporary account
-            const tempPassword = Math.random().toString(36).substring(2, 10);
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash(tempPassword, salt);
-            
-            const newUser = await pool.query(
-                `INSERT INTO users (email, password_hash, full_name, user_type, is_verified)
-                 VALUES ($1, $2, $3, 'provider', true)
-                 RETURNING id`,
-                [email, hashedPassword, job.external_provider_name || email.split('@')[0]]
-            );
-            providerId = newUser.rows[0].id;
-        }
-        
-        // Update job to be linked to this provider
-        await pool.query(
-            `UPDATE job_posts SET seeker_id = $1, is_public = false WHERE share_token = $2`,
-            [providerId, share_token]
-        );
-        
-        res.json({ 
-            success: true, 
-            message: 'Job claimed successfully! You can now manage it from your dashboard.',
-            provider_id: providerId
-        });
-    } catch (error) {
-        console.error('Claim job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
 });
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
