@@ -2634,39 +2634,62 @@ app.get('/api/public/jobs', async (req, res) => {
 // ==================== FIXED MARKETPLACE API - RETURNS JOBS TOO ====================
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        // Get services from providers
+        console.log('Marketplace request from user:', req.user.id, req.user.user_type);
+        
+        // PROVIDER VIEW - Only their own services
+        if (req.user.user_type === 'provider') {
+            const result = await pool.query(`
+                SELECT 
+                    ps.id,
+                    ps.title,
+                    ps.description,
+                    ps.price,
+                    ps.provider_id,
+                    'service' as item_type
+                FROM provider_services ps
+                WHERE ps.provider_id = $1 AND ps.is_active = true
+                ORDER BY ps.created_at DESC
+            `, [req.user.id]);
+            
+            console.log(`Provider ${req.user.id}: ${result.rows.length} services`);
+            return res.json(result.rows);
+        }
+        
+        // SEEKER VIEW - All services from all providers AND public jobs
         const services = await pool.query(`
             SELECT 
-                ps.id, ps.title, ps.description, ps.price, ps.price_type, ps.provider_id,
-                u.full_name as provider_name, u.location as provider_location,
+                ps.id,
+                ps.title,
+                ps.description,
+                ps.price,
+                ps.provider_id,
+                u.full_name as provider_name,
+                u.location as provider_location,
                 COALESCE(u.rating, 0)::float as provider_rating,
-                c.name as category_name, c.icon as category_icon, c.id as category_id,
                 'service' as item_type
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
-            JOIN categories c ON ps.category_id = c.id
-            WHERE ps.is_active = true AND u.is_active = true
+            WHERE ps.is_active = true
             ORDER BY ps.created_at DESC
         `);
         
-        // Get jobs posted by admin
         const jobs = await pool.query(`
             SELECT 
-                jp.id, jp.title, jp.description, jp.budget as price,
-                'fixed' as price_type, NULL as provider_id,
+                jp.id,
+                jp.title,
+                jp.description,
+                jp.budget as price,
                 COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
                 jp.location as provider_location,
-                c.name as category_name, c.icon as category_icon, c.id as category_id,
                 'job' as item_type
             FROM job_posts jp
-            JOIN categories c ON jp.category_id = c.id
-            WHERE jp.status = 'open' AND jp.posted_by_admin = true
+            WHERE jp.status = 'open' AND jp.is_public = true
             ORDER BY jp.created_at DESC
         `);
         
         const allItems = [...services.rows, ...jobs.rows];
         
-        console.log(`📊 API Returning: ${services.rows.length} services, ${jobs.rows.length} jobs, TOTAL: ${allItems.length}`);
+        console.log(`Seeker view: ${services.rows.length} services, ${jobs.rows.length} jobs`);
         
         res.json(allItems);
     } catch (error) {
