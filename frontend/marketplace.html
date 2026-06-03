@@ -71,6 +71,7 @@
         </div>
         <div class="user-info">
             <span id="userName">User</span>
+            <span id="userTypeBadge" style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px;"></span>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </nav>
@@ -132,6 +133,7 @@
         try { 
             user = JSON.parse(localStorage.getItem('user')); 
             document.getElementById('userName').innerText = user?.full_name || 'User';
+            document.getElementById('userTypeBadge').innerText = user?.user_type === 'seeker' ? 'Customer' : 'Provider';
             
             const dashboardLink = document.getElementById('dashboardLink');
             if (user?.user_type === 'seeker') {
@@ -215,12 +217,12 @@
                     return;
                 }
                 
-                // SEEKER VIEW - show everything
+                // SEEKER VIEW - show everything (jobs first, then services)
                 const jobs = filtered.filter(i => i.item_type === 'job');
                 const services = filtered.filter(i => i.item_type === 'service');
                 
                 if (jobs.length === 0 && services.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No results found.</div>';
+                    container.innerHTML = '<div class="empty-state">No results found. Try different filters!</div>';
                     return;
                 }
                 
