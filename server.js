@@ -2632,44 +2632,74 @@ app.get('/api/public/jobs', async (req, res) => {
 });
 
 // ==================== MARKETPLACE API (SHOWS BOTH SERVICES AND JOBS) ====================
+// ==================== SIMPLIFIED WORKING MARKETPLACE API ====================
+
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        // Get services from providers
-        const services = await pool.query(`
+        console.log('📊 Marketplace API called by user:', req.user.id, req.user.user_type);
+        
+        // Get all services from providers
+        const servicesResult = await pool.query(`
             SELECT 
-                ps.id, ps.title, ps.description, ps.price, ps.price_type, ps.provider_id,
-                u.full_name as provider_name, u.location as provider_location,
-                COALESCE(u.rating, 0) as provider_rating,
-                c.name as category_name, c.icon as category_icon, c.id as category_id,
-                'service' as item_type
+                ps.id,
+                ps.title,
+                ps.description,
+                ps.price,
+                ps.price_type,
+                ps.provider_id,
+                ps.created_at,
+                u.full_name as provider_name,
+                u.location as provider_location,
+                COALESCE(u.rating, 0)::float as provider_rating,
+                COALESCE(u.total_reviews, 0) as provider_reviews,
+                c.name as category_name,
+                c.icon as category_icon,
+                c.id as category_id
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
             JOIN categories c ON ps.category_id = c.id
             WHERE ps.is_active = true AND u.is_active = true
+            ORDER BY ps.created_at DESC
         `);
         
-        // Get public jobs from admin
-        const jobs = await pool.query(`
+        // Add type to services
+        const services = servicesResult.rows.map(s => ({ ...s, item_type: 'service' }));
+        
+        // Get all jobs (public or not - show all to seekers)
+        const jobsResult = await pool.query(`
             SELECT 
-                jp.id, jp.title, jp.description, jp.budget as price,
+                jp.id,
+                jp.title,
+                jp.description,
+                COALESCE(jp.budget, 0) as price,
                 'fixed' as price_type,
+                NULL as provider_id,
+                jp.created_at,
                 COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
                 jp.location as provider_location,
-                c.name as category_name, c.icon as category_icon, c.id as category_id,
-                'job' as item_type
+                0 as provider_rating,
+                0 as provider_reviews,
+                c.name as category_name,
+                c.icon as category_icon,
+                c.id as category_id
             FROM job_posts jp
             JOIN categories c ON jp.category_id = c.id
-            WHERE jp.is_public = true AND jp.status = 'open' AND jp.posted_by_admin = true
+            WHERE jp.status = 'open'
+            ORDER BY jp.created_at DESC
         `);
         
-        const allItems = [...services.rows, ...jobs.rows];
+        // Add type to jobs
+        const jobs = jobsResult.rows.map(j => ({ ...j, item_type: 'job' }));
         
-        console.log(`📊 Marketplace: ${services.rows.length} services, ${jobs.rows.length} jobs`);
+        // Combine both
+        const allItems = [...services, ...jobs];
+        
+        console.log(`✅ Marketplace: ${services.length} services, ${jobs.length} jobs, TOTAL: ${allItems.length}`);
         
         res.json(allItems);
     } catch (error) {
         console.error('Marketplace error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message, stack: error.stack });
     }
 });
 // Debug endpoint - check if jobs exist (requires login)
