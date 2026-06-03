@@ -2631,15 +2631,14 @@ app.get('/api/public/jobs', async (req, res) => {
     }
 });
 
-// ==================== MARKETPLACE API (SHOWS BOTH SERVICES AND JOBS) ====================
-// ==================== FIXED MARKETPLACE API ====================
+// ==================== FIXED MARKETPLACE API - RETURNS JOBS TOO ====================
 
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        console.log('📊 Marketplace API called');
+        console.log('📊 Marketplace API called - User:', req.user.id, 'Type:', req.user.user_type);
         
-        // Get services from providers
-        const servicesResult = await pool.query(`
+        // 1. Get all services from providers
+        const services = await pool.query(`
             SELECT 
                 ps.id,
                 ps.title,
@@ -2651,11 +2650,10 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
                 u.full_name as provider_name,
                 u.location as provider_location,
                 COALESCE(u.rating, 0)::float as provider_rating,
-                COALESCE(u.total_reviews, 0) as provider_reviews,
                 c.name as category_name,
                 c.icon as category_icon,
                 c.id as category_id,
-                'service' as item_type
+                'service' as type
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
             JOIN categories c ON ps.category_id = c.id
@@ -2663,38 +2661,40 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
             ORDER BY ps.created_at DESC
         `);
         
-        console.log(`Found ${servicesResult.rows.length} services`);
-        
-        // Get jobs
-        const jobsResult = await pool.query(`
+        // 2. Get ALL open jobs (including those posted by admin)
+        const jobs = await pool.query(`
             SELECT 
                 jp.id,
                 jp.title,
                 jp.description,
-                COALESCE(jp.budget, 0) as price,
+                jp.budget as price,
                 'fixed' as price_type,
                 NULL as provider_id,
                 jp.created_at,
                 COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
                 jp.location as provider_location,
                 0 as provider_rating,
-                0 as provider_reviews,
                 c.name as category_name,
                 c.icon as category_icon,
                 c.id as category_id,
-                'job' as item_type
+                'job' as type
             FROM job_posts jp
             JOIN categories c ON jp.category_id = c.id
             WHERE jp.status = 'open'
             ORDER BY jp.created_at DESC
         `);
         
-        console.log(`Found ${jobsResult.rows.length} jobs`);
+        console.log(`📊 Found: ${services.rows.length} services, ${jobs.rows.length} jobs`);
         
-        // Combine both arrays
-        const allItems = [...servicesResult.rows, ...jobsResult.rows];
+        // Log the jobs found for debugging
+        if (jobs.rows.length > 0) {
+            console.log('Jobs found:', jobs.rows.map(j => ({ id: j.id, title: j.title })));
+        } else {
+            console.log('No jobs found in database with status "open"');
+        }
         
-        console.log(`TOTAL: ${allItems.length} items (${servicesResult.rows.length} services, ${jobsResult.rows.length} jobs)`);
+        // Combine results
+        const allItems = [...services.rows, ...jobs.rows];
         
         res.json(allItems);
     } catch (error) {
