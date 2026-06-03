@@ -61,7 +61,7 @@
         .action-btn.warning { color: #f59e0b; }
         
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .modal-content { background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 20px; padding: 30px; max-width: 600px; width: 90%; }
         .modal-content input, .modal-content select, .modal-content textarea { width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; margin-bottom: 15px; }
         .modal-content input:focus, .modal-content select:focus { outline: none; border-color: #00e8a0; }
         .modal-buttons { display: flex; gap: 10px; margin-top: 10px; }
@@ -74,6 +74,18 @@
         .stat-box .number { font-size: 20px; font-weight: 700; }
         .stat-box .label { font-size: 11px; opacity: 0.7; }
         
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        .form-input, .form-select, .form-textarea { width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: white; }
+        .form-input::placeholder, .form-textarea::placeholder { color: rgba(255,255,255,0.5); }
+        .btn-primary { background: linear-gradient(135deg, #00c8ff, #00e8a0); color: #0f0c29; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        .btn-secondary { background: rgba(255,255,255,0.2); color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        
+        .commission-rate { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .commission-rate input { padding: 12px 20px; border-radius: 12px; border: none; font-size: 16px; width: 150px; }
+        
+        .job-link-box { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; margin-top: 15px; word-break: break-all; }
+        .copy-btn { background: #00c8ff; color: #0f0c29; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        
         @media (max-width: 768px) { .stats-grid { grid-template-columns: 1fr; } table { font-size: 12px; } th, td { padding: 8px; } .tabs { justify-content: center; } }
     </style>
 </head>
@@ -82,8 +94,8 @@
         <div class="logo">Service<span>Connect</span> <span class="badge">Admin</span></div>
         <div class="nav-links">
             <a href="admin-dashboard.html" class="nav-link active">📊 Dashboard</a>
-            <a href="index.html" class="nav-link">🏠 Home</a>
             <a href="admin-chat.html" class="nav-link">💬 Chat Monitor</a>
+            <a href="index.html" class="nav-link">🏠 Home</a>
         </div>
         <button class="logout-btn" onclick="logout()">Logout</button>
     </nav>
@@ -110,10 +122,12 @@
         <!-- Tabs -->
         <div class="tabs">
             <button class="tab-btn active" onclick="showTab('overview')">📊 Overview</button>
+            <button class="tab-btn" onclick="showTab('postJob')">📝 Post Job for Provider</button>
             <button class="tab-btn" onclick="showTab('transactions')">💰 Transactions</button>
             <button class="tab-btn" onclick="showTab('users')">👥 Users</button>
             <button class="tab-btn" onclick="showTab('jobs')">📋 Jobs</button>
             <button class="tab-btn" onclick="showTab('services')">🔧 Services</button>
+            <button class="tab-btn" onclick="showTab('publicJobs')">🌍 Public Job Board</button>
         </div>
         
         <!-- Overview Tab -->
@@ -127,6 +141,36 @@
             </div>
         </div>
         
+        <!-- Post Job for Provider Tab -->
+        <div id="postJobTab" class="card" style="display: none;">
+            <h2><i class="fas fa-plus-circle"></i> Post a Job for a Provider</h2>
+            <p style="margin-bottom: 20px; opacity: 0.7;">Create a job on behalf of a service provider. They will receive a shareable link.</p>
+            
+            <div class="form-row">
+                <select id="adminJobCategory" class="form-select">
+                    <option value="">Select Category</option>
+                </select>
+                <input type="text" id="adminJobTitle" class="form-input" placeholder="Job Title *">
+            </div>
+            <div class="form-row">
+                <textarea id="adminJobDescription" rows="4" class="form-textarea" placeholder="Job Description *"></textarea>
+            </div>
+            <div class="form-row">
+                <input type="number" id="adminJobBudget" class="form-input" placeholder="Budget (GHS)">
+                <input type="text" id="adminJobLocation" class="form-input" placeholder="Location">
+                <input type="date" id="adminJobDate" class="form-input">
+            </div>
+            <div class="form-row">
+                <input type="text" id="adminProviderName" class="form-input" placeholder="Provider Name (optional)">
+                <input type="tel" id="adminProviderPhone" class="form-input" placeholder="Provider Phone (optional)">
+                <input type="email" id="adminProviderEmail" class="form-input" placeholder="Provider Email (optional)">
+            </div>
+            <button class="btn-primary" onclick="adminPostJob()" style="width: auto; min-width: 200px;">
+                <i class="fas fa-plus"></i> Post Job & Generate Link
+            </button>
+            <div id="adminJobResult"></div>
+        </div>
+        
         <!-- Transactions Tab -->
         <div id="transactionsTab" class="card" style="display: none;">
             <h2><i class="fas fa-history"></i> Recent Transactions</h2>
@@ -138,43 +182,24 @@
             </div>
         </div>
         
-        <!-- Users Tab with FULL CONTROLS -->
+        <!-- Users Tab -->
         <div id="usersTab" class="card" style="display: none;">
             <h2><i class="fas fa-users"></i> User Management</h2>
-            
-            <!-- Stats Bar -->
             <div class="stats-bar">
                 <div class="stat-box"><div class="number" id="totalUsersCount">0</div><div class="label">Total Users</div></div>
                 <div class="stat-box"><div class="number" id="activeUsersCount" style="color: #10b981;">0</div><div class="label">Active</div></div>
                 <div class="stat-box"><div class="number" id="seekersCount" style="color: #3b82f6;">0</div><div class="label">Seekers</div></div>
                 <div class="stat-box"><div class="number" id="providersCount" style="color: #f59e0b;">0</div><div class="label">Providers</div></div>
             </div>
-            
-            <!-- Filters -->
             <div class="status-filter">
                 <input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="debounceFilterUsers()">
-                <select id="userTypeFilter" onchange="loadUsers()">
-                    <option value="">All Types</option>
-                    <option value="seeker">Seeker</option>
-                    <option value="provider">Provider</option>
-                    <option value="admin">Admin</option>
-                </select>
-                <select id="userStatusFilter" onchange="loadUsers()">
-                    <option value="">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                </select>
+                <select id="userTypeFilter" onchange="loadUsers()"><option value="">All Types</option><option value="seeker">Seeker</option><option value="provider">Provider</option><option value="admin">Admin</option></select>
+                <select id="userStatusFilter" onchange="loadUsers()"><option value="">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
                 <button class="action-btn success" onclick="openAddUserModal()" style="background: #10b981; padding: 8px 16px;">➕ Add User</button>
             </div>
-            
-            <!-- Users Table -->
             <div style="overflow-x: auto;">
                 <table id="usersTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Rating</th><th>Status</th><th>Verified</th><th>Joined</th><th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Type</th><th>Phone</th><th>Location</th><th>Rating</th><th>Status</th><th>Verified</th><th>Joined</th><th>Actions</th></tr></thead>
                     <tbody id="usersList"><tr><td colspan="11" style="text-align: center;">Loading...</td></tr></tbody>
                 </table>
             </div>
@@ -185,86 +210,16 @@
             <h2><i class="fas fa-briefcase"></i> Job Moderation</h2>
             <div class="status-filter">
                 <input type="text" id="jobSearch" placeholder="Search by title..." onkeyup="debounceFilterJobs()">
-                <select id="jobStatusFilter" onchange="loadJobs()">
-                    <option value="">All Status</option>
-                    <option value="open">Open</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="completed">Completed</option>
-                </select>
+                <select id="jobStatusFilter" onchange="loadJobs()"><option value="">All Status</option><option value="open">Open</option><option value="assigned">Assigned</option><option value="completed">Completed</option></select>
             </div>
             <div style="overflow-x: auto;">
                 <table id="jobsTable">
                     <thead><tr><th>ID</th><th>Title</th><th>Seeker</th><th>Budget</th><th>Location</th><th>Status</th><th>Bids</th><th>Created</th><th>Actions</th></tr></thead>
                     <tbody id="jobsList"><tr><td colspan="9" style="text-align: center;">Loading...</td></tr></tbody>
                 </table>
-                </div>
-        </div>
-        <!-- Post Job for Provider Section -->
-<div class="card">
-    <h2><i class="fas fa-plus-circle"></i> Post Job for Provider</h2>
-    <div class="form-row">
-        <select id="adminJobCategory" class="form-select"><option value="">Select Category</option></select>
-        <input type="text" id="adminJobTitle" class="form-input" placeholder="Job Title">
-    </div>
-    <div class="form-row"><textarea id="adminJobDescription" rows="3" placeholder="Job Description"></textarea></div>
-    <div class="form-row">
-        <input type="number" id="adminJobBudget" placeholder="Budget (GHS)">
-        <input type="text" id="adminJobLocation" placeholder="Location">
-        <input type="date" id="adminJobDate">
-    </div>
-    <div class="form-row">
-        <input type="text" id="adminProviderName" placeholder="Provider Name">
-        <input type="tel" id="adminProviderPhone" placeholder="Provider Phone">
-        <input type="email" id="adminProviderEmail" placeholder="Provider Email">
-    </div>
-    <button class="btn-primary" onclick="adminPostJob()">Post Job & Generate Link →</button>
-    <div id="adminJobResult"></div>
-</div>
-
-<script>
-async function adminPostJob() {
-    const data = {
-        category_id: document.getElementById('adminJobCategory').value,
-        title: document.getElementById('adminJobTitle').value,
-        description: document.getElementById('adminJobDescription').value,
-        budget: document.getElementById('adminJobBudget').value,
-        location: document.getElementById('adminJobLocation').value,
-        preferred_date: document.getElementById('adminJobDate').value,
-        external_provider_name: document.getElementById('adminProviderName').value,
-        external_provider_phone: document.getElementById('adminProviderPhone').value,
-        external_provider_email: document.getElementById('adminProviderEmail').value
-    };
-    
-    const result = await apiCall('/api/admin/jobs/create', { method: 'POST', body: JSON.stringify(data) });
-    
-    if (result.success) {
-        document.getElementById('adminJobResult').innerHTML = `
-            <div style="margin-top: 15px; padding: 15px; background: #10b98120; border-radius: 12px;">
-                <p>✅ Job posted successfully!</p>
-                <p><strong>Shareable Link:</strong></p>
-                <input type="text" value="${result.shareable_link}" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc;" readonly>
-                <button onclick="copyToClipboard('${result.shareable_link}')" style="margin-top: 10px; padding: 8px 16px; background: #00c8ff; border: none; border-radius: 8px; cursor: pointer;">Copy Link</button>
             </div>
-        `;
-        // Clear form
-        document.getElementById('adminJobTitle').value = '';
-        document.getElementById('adminJobDescription').value = '';
-        document.getElementById('adminJobBudget').value = '';
-        document.getElementById('adminJobLocation').value = '';
-        document.getElementById('adminJobDate').value = '';
-        document.getElementById('adminProviderName').value = '';
-        document.getElementById('adminProviderPhone').value = '';
-        document.getElementById('adminProviderEmail').value = '';
-    } else {
-        alert('Failed: ' + result.message);
-    }
-}
-
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text);
-    alert('Link copied!');
-}
-</script>
+        </div>
+        
         <!-- Services Tab -->
         <div id="servicesTab" class="card" style="display: none;">
             <h2><i class="fas fa-tools"></i> Provider Services</h2>
@@ -276,12 +231,24 @@ function copyToClipboard(text) {
             </div>
         </div>
         
+        <!-- Public Jobs Tab -->
+        <div id="publicJobsTab" class="card" style="display: none;">
+            <h2><i class="fas fa-globe"></i> Public Job Board Posts</h2>
+            <p style="margin-bottom: 15px;">Jobs posted publicly. Share these links on social media!</p>
+            <div style="overflow-x: auto;">
+                <table id="publicJobsTable">
+                    <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Budget</th><th>Provider</th><th>Views</th><th>Share Link</th><th>Created</th><th>Actions</th></tr></thead>
+                    <tbody id="publicJobsList"><tr><td colspan="9" style="text-align: center;">Loading...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        
         <!-- Commission Settings -->
         <div class="card">
             <h2><i class="fas fa-sliders-h"></i> Commission Settings</h2>
-            <div class="commission-rate" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
-                <input type="number" id="commissionRate" step="0.5" min="0" max="100" value="10" style="padding: 12px 20px; border-radius: 12px; border: none; font-size: 16px; width: 150px;">
-                <button onclick="updateCommissionRate()" style="padding: 12px 24px; background: #00e8a0; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; color: #0f0c29;"><i class="fas fa-save"></i> Update Commission Rate</button>
+            <div class="commission-rate">
+                <input type="number" id="commissionRate" step="0.5" min="0" max="100" value="10">
+                <button class="btn-primary" onclick="updateCommissionRate()"><i class="fas fa-save"></i> Update Commission Rate</button>
             </div>
         </div>
     </div>
@@ -295,11 +262,7 @@ function copyToClipboard(text) {
             <input type="password" id="addUserPassword" placeholder="Password *">
             <input type="text" id="addUserPhone" placeholder="Phone">
             <input type="text" id="addUserLocation" placeholder="Location">
-            <select id="addUserType">
-                <option value="seeker">Seeker</option>
-                <option value="provider">Provider</option>
-                <option value="admin">Admin</option>
-            </select>
+            <select id="addUserType"><option value="seeker">Seeker</option><option value="provider">Provider</option><option value="admin">Admin</option></select>
             <div class="modal-buttons">
                 <button onclick="createUser()" style="background: #00e8a0; color: #0f0c29;">Create User</button>
                 <button onclick="closeAddUserModal()" style="background: rgba(255,255,255,0.1); color: white;">Cancel</button>
@@ -315,19 +278,9 @@ function copyToClipboard(text) {
             <input type="email" id="editUserEmail" placeholder="Email" readonly style="opacity:0.7;">
             <input type="text" id="editUserPhone" placeholder="Phone">
             <input type="text" id="editUserLocation" placeholder="Location">
-            <select id="editUserType">
-                <option value="seeker">Seeker</option>
-                <option value="provider">Provider</option>
-                <option value="admin">Admin</option>
-            </select>
-            <select id="editUserStatus">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-            </select>
-            <select id="editUserVerified">
-                <option value="true">Verified</option>
-                <option value="false">Not Verified</option>
-            </select>
+            <select id="editUserType"><option value="seeker">Seeker</option><option value="provider">Provider</option><option value="admin">Admin</option></select>
+            <select id="editUserStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select>
+            <select id="editUserVerified"><option value="true">Verified</option><option value="false">Not Verified</option></select>
             <div class="modal-buttons">
                 <button onclick="saveUserEdit()" style="background: #00e8a0; color: #0f0c29;">Save Changes</button>
                 <button onclick="closeEditUserModal()" style="background: rgba(255,255,255,0.1); color: white;">Cancel</button>
@@ -356,12 +309,7 @@ function copyToClipboard(text) {
             <input type="text" id="editJobTitle" placeholder="Job Title">
             <textarea id="editJobDescription" rows="3" placeholder="Description"></textarea>
             <input type="number" id="editJobBudget" placeholder="Budget">
-            <select id="editJobStatus">
-                <option value="open">Open</option>
-                <option value="assigned">Assigned</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-            </select>
+            <select id="editJobStatus"><option value="open">Open</option><option value="assigned">Assigned</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>
             <div class="modal-buttons">
                 <button onclick="saveJobEdit()" style="background: #00e8a0; color: #0f0c29;">Save Changes</button>
                 <button onclick="closeEditJobModal()" style="background: rgba(255,255,255,0.1); color: white;">Cancel</button>
@@ -401,21 +349,114 @@ function copyToClipboard(text) {
             } catch (error) { return { success: false, error: error.message }; }
         }
         
-        function debounceFilterUsers() {
-            if (filterTimeout) clearTimeout(filterTimeout);
-            filterTimeout = setTimeout(() => loadUsers(), 500);
+        function debounceFilterUsers() { if (filterTimeout) clearTimeout(filterTimeout); filterTimeout = setTimeout(() => loadUsers(), 500); }
+        function debounceFilterJobs() { if (filterTimeout) clearTimeout(filterTimeout); filterTimeout = setTimeout(() => loadJobs(), 500); }
+        
+        // ============ POST JOB FOR PROVIDER ============
+        async function loadCategoriesForAdmin() {
+            try {
+                const categories = await apiCall('/api/categories');
+                const select = document.getElementById('adminJobCategory');
+                if (categories && categories.length > 0) {
+                    select.innerHTML = '<option value="">Select Category</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                }
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
         }
         
-        function debounceFilterJobs() {
-            if (filterTimeout) clearTimeout(filterTimeout);
-            filterTimeout = setTimeout(() => loadJobs(), 500);
+        async function adminPostJob() {
+            const category_id = document.getElementById('adminJobCategory').value;
+            const title = document.getElementById('adminJobTitle').value;
+            const description = document.getElementById('adminJobDescription').value;
+            const budget = document.getElementById('adminJobBudget').value;
+            const location = document.getElementById('adminJobLocation').value;
+            const preferred_date = document.getElementById('adminJobDate').value;
+            const external_provider_name = document.getElementById('adminProviderName').value;
+            const external_provider_phone = document.getElementById('adminProviderPhone').value;
+            const external_provider_email = document.getElementById('adminProviderEmail').value;
+            
+            if (!category_id || !title || !description) {
+                showToast('Please fill category, title, and description', 'error');
+                return;
+            }
+            
+            showToast('Posting job...', 'info');
+            
+            const result = await apiCall('/api/admin/jobs/create', {
+                method: 'POST',
+                body: JSON.stringify({
+                    category_id: parseInt(category_id),
+                    title, description, budget, location, preferred_date,
+                    external_provider_name, external_provider_phone, external_provider_email
+                })
+            });
+            
+            if (result.success) {
+                document.getElementById('adminJobResult').innerHTML = `
+                    <div style="margin-top: 20px; padding: 15px; background: rgba(16,185,129,0.2); border-radius: 12px; border-left: 4px solid #10b981;">
+                        <p style="color: #10b981; margin-bottom: 10px;">✅ Job posted successfully!</p>
+                        <p><strong>Shareable Link:</strong></p>
+                        <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; word-break: break-all;">
+                            ${result.shareable_link}
+                        </div>
+                        <button class="copy-btn" onclick="copyToClipboard('${result.shareable_link}')" style="margin-top: 10px;">
+                            <i class="fas fa-copy"></i> Copy Link
+                        </button>
+                        <button class="copy-btn" onclick="window.open('${result.shareable_link}', '_blank')" style="margin-top: 10px; margin-left: 10px; background: #3b82f6;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </button>
+                    </div>
+                `;
+                // Clear form
+                document.getElementById('adminJobTitle').value = '';
+                document.getElementById('adminJobDescription').value = '';
+                document.getElementById('adminJobBudget').value = '';
+                document.getElementById('adminJobLocation').value = '';
+                document.getElementById('adminJobDate').value = '';
+                document.getElementById('adminProviderName').value = '';
+                document.getElementById('adminProviderPhone').value = '';
+                document.getElementById('adminProviderEmail').value = '';
+                loadPublicJobs();
+                loadStats();
+            } else {
+                showToast(result.message || 'Failed to post job', 'error');
+            }
         }
         
-        async function loadDashboard() {
-            await loadStats();
-            await loadTransactions();
-            await loadRevenueChart();
+        async function loadPublicJobs() {
+            try {
+                const result = await apiCall('/api/admin/jobs?public_only=true');
+                const tbody = document.getElementById('publicJobsList');
+                if (result.success && result.jobs && result.jobs.length > 0) {
+                    tbody.innerHTML = result.jobs.map(job => `
+                        <tr>
+                            <td>${job.id}</td>
+                            <td><strong>${escapeHtml(job.title)}</strong></td>
+                            <td>${job.category_name || '-'}</td>
+                            <td>GHS ${job.budget || 'Negotiable'}</td>
+                            <td>${escapeHtml(job.external_provider_name || '-')}</td>
+                            <td>${job.view_count || 0}</td>
+                            <td><input type="text" value="${API_URL}/job-view.html?token=${job.share_token}" readonly style="width: 200px; background: rgba(255,255,255,0.1); border: none; padding: 5px; border-radius: 4px; color: white;"></td>
+                            <td>${new Date(job.created_at).toLocaleDateString()}</td>
+                            <td><button class="action-btn" onclick="copyToClipboard('${API_URL}/job-view.html?token=${job.share_token}')">📋 Copy Link</button></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No public jobs found</td></tr>';
+                }
+            } catch (error) {
+                document.getElementById('publicJobsList').innerHTML = '<tr><td colspan="9" style="text-align: center;">Error loading public jobs</td></tr>';
+            }
         }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+            showToast('Link copied to clipboard!', 'success');
+        }
+        
+        // ============ LOAD FUNCTIONS ============
+        async function loadDashboard() { await loadStats(); await loadTransactions(); await loadRevenueChart(); }
         
         async function loadStats() {
             try {
@@ -426,25 +467,12 @@ function copyToClipboard(text) {
                     document.getElementById('weekEarnings').innerHTML = `GHS ${(earnings.week_earnings || 0).toLocaleString()}`;
                     document.getElementById('monthEarnings').innerHTML = `GHS ${(earnings.month_earnings || 0).toLocaleString()}`;
                 }
-                
                 const rate = await apiCall('/api/commission/rate');
-                if (rate.success) {
-                    document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`;
-                    document.getElementById('commissionRate').value = rate.commission_rate || 10;
-                }
-                
+                if (rate.success) { document.getElementById('currentRate').innerHTML = `${rate.commission_rate || 10}%`; document.getElementById('commissionRate').value = rate.commission_rate || 10; }
                 const users = await apiCall('/api/admin/users?limit=1');
-                if (users.success) {
-                    document.getElementById('totalUsers').innerHTML = users.total || 0;
-                    document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`;
-                    document.getElementById('activeUsersStat').innerHTML = users.active || 0;
-                }
-                
+                if (users.success) { document.getElementById('totalUsers').innerHTML = users.total || 0; document.getElementById('userBreakdown').innerHTML = `Seekers: ${users.seekers || 0} | Providers: ${users.providers || 0}`; document.getElementById('activeUsersStat').innerHTML = users.active || 0; }
                 const jobs = await apiCall('/api/admin/jobs/stats');
-                if (jobs.success) {
-                    document.getElementById('totalJobs').innerHTML = jobs.total || 0;
-                    document.getElementById('jobsBreakdown').innerHTML = `Open: ${jobs.open || 0} | Completed: ${jobs.completed || 0}`;
-                }
+                if (jobs.success) { document.getElementById('totalJobs').innerHTML = jobs.total || 0; document.getElementById('jobsBreakdown').innerHTML = `Open: ${jobs.open || 0} | Completed: ${jobs.completed || 0}`; }
             } catch (error) { console.error('Error loading stats:', error); }
         }
         
@@ -452,26 +480,10 @@ function copyToClipboard(text) {
             try {
                 const result = await apiCall('/api/commission/earnings');
                 const tbody = document.getElementById('transactionsList');
-                
                 if (result.success && result.recent_transactions && result.recent_transactions.length > 0) {
-                    tbody.innerHTML = result.recent_transactions.map((t, i) => `
-                        <tr>
-                            <td>${i + 1}</td>
-                            <td>${escapeHtml(t.job_title || 'Direct Hire')}</td>
-                            <td>GHS ${t.agreed_amount || 0}</td>
-                            <td style="color: #f59e0b;">GHS ${t.platform_commission || 0}</td>
-                            <td>${escapeHtml(t.provider_name || '-')}</td>
-                            <td>${escapeHtml(t.seeker_name || '-')}</td>
-                            <td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td>
-                            <td><span class="badge">Completed</span></td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No transactions yet</td></tr>';
-                }
-            } catch (error) {
-                document.getElementById('transactionsList').innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading transactions</td></tr>';
-            }
+                    tbody.innerHTML = result.recent_transactions.map((t, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(t.job_title || 'Direct Hire')}</td><td>GHS ${t.agreed_amount || 0}</td><td style="color:#f59e0b;">GHS ${t.platform_commission || 0}</td><td>${escapeHtml(t.provider_name || '-')}</td><td>${escapeHtml(t.seeker_name || '-')}</td><td>${t.completed_at ? new Date(t.completed_at).toLocaleDateString() : '-'}</td><td><span class="badge">Completed</span></td></tr>`).join('');
+                } else { tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No transactions yet</td></tr>'; }
+            } catch (error) { document.getElementById('transactionsList').innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading transactions</td></tr>'; }
         }
         
         async function loadUsers() {
@@ -479,123 +491,42 @@ function copyToClipboard(text) {
                 const search = document.getElementById('userSearch')?.value || '';
                 const type = document.getElementById('userTypeFilter')?.value || '';
                 const status = document.getElementById('userStatusFilter')?.value || '';
-                
-                let url = `/api/admin/users?limit=100`;
-                if (search) url += `&search=${encodeURIComponent(search)}`;
-                if (type && type !== 'all') url += `&type=${type}`;
-                if (status) url += `&status=${status}`;
-                
+                let url = `/api/admin/users?limit=100`; if (search) url += `&search=${encodeURIComponent(search)}`; if (type && type !== 'all') url += `&type=${type}`; if (status) url += `&status=${status}`;
                 const result = await apiCall(url);
-                if (result.success && result.users) {
-                    allUsers = result.users;
-                    displayUsers(allUsers);
-                    
-                    document.getElementById('totalUsersCount').innerText = result.total || 0;
-                    document.getElementById('activeUsersCount').innerText = result.active || 0;
-                    document.getElementById('seekersCount').innerText = result.seekers || 0;
-                    document.getElementById('providersCount').innerText = result.providers || 0;
-                }
-            } catch (error) {
-                document.getElementById('usersList').innerHTML = '<tr><td colspan="11">Error loading users</td></tr>';
-            }
+                if (result.success && result.users) { allUsers = result.users; displayUsers(allUsers); document.getElementById('totalUsersCount').innerText = result.total || 0; document.getElementById('activeUsersCount').innerText = result.active || 0; document.getElementById('seekersCount').innerText = result.seekers || 0; document.getElementById('providersCount').innerText = result.providers || 0; }
+            } catch (error) { document.getElementById('usersList').innerHTML = '<tr><td colspan="11">Error loading users</td></tr>'; }
         }
         
         function displayUsers(users) {
             const tbody = document.getElementById('usersList');
-            if (!users || users.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11">No users found</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = users.map(u => `
-                <tr>
-                    <td>${u.id}</td>
-                    <td><strong>${escapeHtml(u.full_name)}</strong></td>
-                    <td>${escapeHtml(u.email)}</td>
-                    <td><span class="badge">${u.user_type}</span></td>
-                    <td>${u.phone || '-'}</td>
-                    <td>${escapeHtml(u.location || '-')}</td>
-                    <td>⭐ ${u.rating || 0} (${u.total_reviews || 0})</td>
-                    <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td>${u.is_verified ? '✅ Verified' : '⚠️ Unverified'}</td>
-                    <td>${new Date(u.created_at).toLocaleDateString()}</td>
-                    <td>
-                        <button class="action-btn" onclick="openEditUserModal(${u.id})" title="Edit User">✏️</button>
-                        <button class="action-btn warning" onclick="openResetPasswordModal(${u.id}, '${escapeHtml(u.full_name)}')" title="Reset Password">🔑</button>
-                        <button class="action-btn ${u.is_active ? 'danger' : 'success'}" onclick="toggleUserStatus(${u.id})" title="${u.is_active ? 'Deactivate' : 'Activate'}">${u.is_active ? '🔒' : '🔓'}</button>
-                        <button class="action-btn danger" onclick="deleteUser(${u.id}, '${escapeHtml(u.full_name)}')" title="Delete User">🗑️</button>
-                    </td>
-                </tr>
-            `).join('');
+            if (!users || users.length === 0) { tbody.innerHTML = '<tr><td colspan="11">No users found</td></tr>'; return; }
+            tbody.innerHTML = users.map(u => `<tr><td>${u.id}</td><td><strong>${escapeHtml(u.full_name)}</strong></td><td>${escapeHtml(u.email)}</td><td><span class="badge">${u.user_type}</span></td><td>${u.phone || '-'}</td><td>${escapeHtml(u.location || '-')}</td><td>⭐ ${u.rating || 0}</td><td><span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? 'Active' : 'Inactive'}</span></td><td>${u.is_verified ? '✅ Verified' : '⚠️ Unverified'}</td><td>${new Date(u.created_at).toLocaleDateString()}</td><td><button class="action-btn" onclick="openEditUserModal(${u.id})">✏️</button><button class="action-btn warning" onclick="openResetPasswordModal(${u.id}, '${escapeHtml(u.full_name)}')">🔑</button><button class="action-btn ${u.is_active ? 'danger' : 'success'}" onclick="toggleUserStatus(${u.id})">${u.is_active ? '🔒' : '🔓'}</button><button class="action-btn danger" onclick="deleteUser(${u.id}, '${escapeHtml(u.full_name)}')">🗑️</button></td></tr>`).join('');
         }
         
         async function loadJobs() {
             try {
                 const search = document.getElementById('jobSearch')?.value || '';
                 const status = document.getElementById('jobStatusFilter')?.value || '';
-                
-                let url = `/api/admin/jobs?limit=100`;
-                if (search) url += `&search=${encodeURIComponent(search)}`;
-                if (status) url += `&status=${status}`;
-                
+                let url = `/api/admin/jobs?limit=100`; if (search) url += `&search=${encodeURIComponent(search)}`; if (status) url += `&status=${status}`;
                 const result = await apiCall(url);
-                if (result.success && result.jobs) {
-                    allJobs = result.jobs;
-                    displayJobs(allJobs);
-                }
-            } catch (error) {
-                document.getElementById('jobsList').innerHTML = '<tr><td colspan="9">Error loading jobs</td></tr>';
-            }
+                if (result.success && result.jobs) { allJobs = result.jobs; displayJobs(allJobs); }
+            } catch (error) { document.getElementById('jobsList').innerHTML = '<tr><td colspan="9">Error loading jobs</td></tr>'; }
         }
         
         function displayJobs(jobs) {
             const tbody = document.getElementById('jobsList');
-            if (!jobs || jobs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9">No jobs found</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = jobs.map(j => `
-                <tr>
-                    <td>${j.id}</td>
-                    <td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small style="opacity:0.7;">${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td>
-                    <td>${escapeHtml(j.seeker_name || 'Unknown')}</td>
-                    <td>GHS ${j.budget || 0}</td>
-                    <td>${escapeHtml(j.location || '-')}</td>
-                    <td><span class="badge ${j.status === 'open' ? 'badge-success' : j.status === 'completed' ? 'badge-info' : 'badge-warning'}">${j.status || 'open'}</span></td>
-                    <td>${j.bid_count || 0}</td>
-                    <td>${new Date(j.created_at).toLocaleDateString()}</td>
-                    <td>
-                        <button class="action-btn" onclick="openEditJobModal(${j.id}, '${escapeHtml(j.title)}', '${escapeHtml(j.description || '')}', ${j.budget || 0}, '${j.status || 'open'}')">✏️</button>
-                        <button class="action-btn danger" onclick="deleteJob(${j.id})">🗑️</button>
-                    </td>
-                </tr>
-            `).join('');
+            if (!jobs || jobs.length === 0) { tbody.innerHTML = '<tr><td colspan="9">No jobs found</td></tr>'; return; }
+            tbody.innerHTML = jobs.map(j => `<tr><td>${j.id}</td><td><strong>${escapeHtml(j.title || 'Untitled')}</strong><br><small>${escapeHtml((j.description || '').substring(0, 50))}${j.description?.length > 50 ? '...' : ''}</small></td><td>${escapeHtml(j.seeker_name || 'Unknown')}</td><td>GHS ${j.budget || 0}</td><td>${escapeHtml(j.location || '-')}</td><td><span class="badge ${j.status === 'open' ? 'badge-success' : j.status === 'completed' ? 'badge-info' : 'badge-warning'}">${j.status || 'open'}</span></td><td>${j.bid_count || 0}</td><td>${new Date(j.created_at).toLocaleDateString()}</td><td><button class="action-btn" onclick="openEditJobModal(${j.id}, '${escapeHtml(j.title)}', '${escapeHtml(j.description || '')}', ${j.budget || 0}, '${j.status || 'open'}')">✏️</button><button class="action-btn danger" onclick="deleteJob(${j.id})">🗑️</button></td></tr>`).join('');
         }
         
         async function loadServices() {
             try {
                 const result = await apiCall('/api/admin/services');
                 const tbody = document.getElementById('servicesList');
-                
                 if (result.success && result.services && result.services.length > 0) {
-                    tbody.innerHTML = result.services.map(s => `
-                        <tr>
-                            <td>${s.id}</td>
-                            <td><strong>${escapeHtml(s.title)}</strong><br><small>${escapeHtml((s.description || '').substring(0, 40))}${s.description?.length > 40 ? '...' : ''}</small></td>
-                            <td>${escapeHtml(s.provider_name)}</td>
-                            <td>${escapeHtml(s.category_name)}</td>
-                            <td>GHS ${s.price || 'Negotiable'}</td>
-                            <td>${new Date(s.created_at).toLocaleDateString()}</td>
-                            <td><button class="action-btn danger" onclick="deleteService(${s.id})">🗑️</button></td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7">No services found</td></tr>';
-                }
-            } catch (error) {
-                document.getElementById('servicesList').innerHTML = '<tr><td colspan="7">Error loading services</td></tr>';
-            }
+                    tbody.innerHTML = result.services.map(s => `<td><td>${s.id}</td><td><strong>${escapeHtml(s.title)}</strong><br><small>${escapeHtml((s.description || '').substring(0, 40))}${s.description?.length > 40 ? '...' : ''}</small></td><td>${escapeHtml(s.provider_name)}</td><td>${escapeHtml(s.category_name)}</td><td>GHS ${s.price || 'Negotiable'}</td><td>${new Date(s.created_at).toLocaleDateString()}</td><td><button class="action-btn danger" onclick="deleteService(${s.id})">🗑️</button></td></tr>`).join('');
+                } else { tbody.innerHTML = '<tr><td colspan="7">No services found</td></tr>'; }
+            } catch (error) { document.getElementById('servicesList').innerHTML = '<tr><td colspan="7">Error loading services</td></tr>'; }
         }
         
         async function loadRevenueChart() {
@@ -604,228 +535,40 @@ function copyToClipboard(text) {
                 if (result.success && result.data) {
                     const ctx = document.getElementById('revenueChart').getContext('2d');
                     if (revenueChart) revenueChart.destroy();
-                    revenueChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: result.data.labels || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                            datasets: [{
-                                label: 'Revenue (GHS)',
-                                data: result.data.values || [0, 0, 0, 0, 0, 0],
-                                borderColor: '#00e8a0',
-                                backgroundColor: 'rgba(0, 232, 160, 0.1)',
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        },
-                        options: { responsive: true, maintainAspectRatio: true }
-                    });
+                    revenueChart = new Chart(ctx, { type: 'line', data: { labels: result.data.labels || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], datasets: [{ label: 'Revenue (GHS)', data: result.data.values || [0,0,0,0,0,0], borderColor: '#00e8a0', backgroundColor: 'rgba(0, 232, 160, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: true } });
                 }
             } catch (error) { console.error('Chart error:', error); }
         }
         
-        // User Management Functions
-        function openAddUserModal() {
-            document.getElementById('addUserModal').style.display = 'flex';
-            document.getElementById('addUserName').value = '';
-            document.getElementById('addUserEmail').value = '';
-            document.getElementById('addUserPassword').value = '';
-            document.getElementById('addUserPhone').value = '';
-            document.getElementById('addUserLocation').value = '';
-        }
-        
-        async function createUser() {
-            const full_name = document.getElementById('addUserName').value;
-            const email = document.getElementById('addUserEmail').value;
-            const password = document.getElementById('addUserPassword').value;
-            const phone = document.getElementById('addUserPhone').value;
-            const location = document.getElementById('addUserLocation').value;
-            const user_type = document.getElementById('addUserType').value;
-            
-            if (!full_name || !email || !password) {
-                showToast('Name, email, and password are required', 'error');
-                return;
-            }
-            
-            const result = await apiCall('/api/admin/users', {
-                method: 'POST',
-                body: JSON.stringify({ full_name, email, password, phone, location, user_type })
-            });
-            
-            if (result.success) {
-                showToast('User created successfully!', 'success');
-                closeAddUserModal();
-                loadUsers();
-                loadStats();
-            } else {
-                showToast(result.message || 'Failed to create user', 'error');
-            }
-        }
-        
-        function openEditUserModal(userId) {
-            const user = allUsers.find(u => u.id === userId);
-            if (!user) return;
-            
-            currentEditUserId = userId;
-            document.getElementById('editUserName').value = user.full_name;
-            document.getElementById('editUserEmail').value = user.email;
-            document.getElementById('editUserPhone').value = user.phone || '';
-            document.getElementById('editUserLocation').value = user.location || '';
-            document.getElementById('editUserType').value = user.user_type;
-            document.getElementById('editUserStatus').value = user.is_active ? 'active' : 'inactive';
-            document.getElementById('editUserVerified').value = user.is_verified ? 'true' : 'false';
-            document.getElementById('editUserModal').style.display = 'flex';
-        }
-        
-        async function saveUserEdit() {
-            const userData = {
-                full_name: document.getElementById('editUserName').value,
-                phone: document.getElementById('editUserPhone').value,
-                location: document.getElementById('editUserLocation').value,
-                user_type: document.getElementById('editUserType').value,
-                is_active: document.getElementById('editUserStatus').value === 'active',
-                is_verified: document.getElementById('editUserVerified').value === 'true'
-            };
-            
-            const result = await apiCall(`/api/admin/users/${currentEditUserId}`, { method: 'PUT', body: JSON.stringify(userData) });
-            if (result.success) {
-                showToast('User updated successfully!', 'success');
-                closeEditUserModal();
-                loadUsers();
-                loadStats();
-            } else {
-                showToast(result.message || 'Failed to update user', 'error');
-            }
-        }
-        
-        async function toggleUserStatus(userId) {
-            const result = await apiCall(`/api/admin/users/${userId}/toggle-status`, { method: 'PUT' });
-            if (result.success) {
-                showToast(result.message, 'success');
-                loadUsers();
-                loadStats();
-            } else {
-                showToast('Failed to update user status', 'error');
-            }
-        }
-        
-        async function deleteUser(userId, userName) {
-            if (confirm(`⚠️ Are you sure you want to DELETE "${userName}"?\n\nThis action CANNOT be undone! The user will be permanently deactivated.`)) {
-                const result = await apiCall(`/api/admin/users/${userId}`, { method: 'DELETE' });
-                if (result.success) {
-                    showToast(`User "${userName}" has been deleted`, 'success');
-                    loadUsers();
-                    loadStats();
-                } else {
-                    showToast(result.message || 'Failed to delete user', 'error');
-                }
-            }
-        }
-        
-        function openResetPasswordModal(userId, userName) {
-            currentResetUserId = userId;
-            document.getElementById('resetUserName').innerText = userName;
-            document.getElementById('resetPassword').value = '';
-            document.getElementById('resetConfirmPassword').value = '';
-            document.getElementById('resetPasswordModal').style.display = 'flex';
-        }
-        
-        async function confirmResetPassword() {
-            const password = document.getElementById('resetPassword').value;
-            const confirm = document.getElementById('resetConfirmPassword').value;
-            
-            if (!password) { showToast('Please enter a password', 'error'); return; }
-            if (password !== confirm) { showToast('Passwords do not match', 'error'); return; }
-            if (password.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
-            
-            const result = await apiCall(`/api/admin/users/${currentResetUserId}/reset-password`, {
-                method: 'POST',
-                body: JSON.stringify({ new_password: password })
-            });
-            
-            if (result.success) {
-                showToast('Password reset successfully!', 'success');
-                closeResetPasswordModal();
-            } else {
-                showToast(result.message || 'Failed to reset password', 'error');
-            }
-        }
-        
-        // Job Management Functions
-        function openEditJobModal(id, title, description, budget, status) {
-            currentEditJobId = id;
-            document.getElementById('editJobTitle').value = title;
-            document.getElementById('editJobDescription').value = description;
-            document.getElementById('editJobBudget').value = budget;
-            document.getElementById('editJobStatus').value = status;
-            document.getElementById('editJobModal').style.display = 'flex';
-        }
-        
-        async function saveJobEdit() {
-            const jobData = {
-                title: document.getElementById('editJobTitle').value,
-                description: document.getElementById('editJobDescription').value,
-                budget: parseFloat(document.getElementById('editJobBudget').value),
-                status: document.getElementById('editJobStatus').value
-            };
-            
-            const result = await apiCall(`/api/admin/jobs/${currentEditJobId}`, { method: 'PUT', body: JSON.stringify(jobData) });
-            if (result.success) {
-                showToast('Job updated successfully!', 'success');
-                closeEditJobModal();
-                loadJobs();
-                loadStats();
-            } else {
-                showToast(result.message || 'Failed to update job', 'error');
-            }
-        }
-        
-        async function deleteJob(jobId) {
-            if (confirm('⚠️ Are you sure you want to delete this job? This action cannot be undone.')) {
-                const result = await apiCall(`/api/admin/jobs/${jobId}`, { method: 'DELETE' });
-                if (result.success) {
-                    showToast('Job deleted successfully!', 'success');
-                    loadJobs();
-                    loadStats();
-                } else {
-                    showToast('Failed to delete job', 'error');
-                }
-            }
-        }
-        
-        async function deleteService(serviceId) {
-            if (confirm('⚠️ Are you sure you want to delete this service?')) {
-                const result = await apiCall(`/api/admin/services/${serviceId}`, { method: 'DELETE' });
-                if (result.success) {
-                    showToast('Service deleted successfully!', 'success');
-                    loadServices();
-                } else {
-                    showToast('Failed to delete service', 'error');
-                }
-            }
-        }
-        
-        async function updateCommissionRate() {
-            const rate = document.getElementById('commissionRate').value;
-            if (!rate || rate < 0 || rate > 100) {
-                showToast('Please enter a rate between 0 and 100', 'error');
-                return;
-            }
-            const result = await apiCall('/api/commission/rate', { method: 'PUT', body: JSON.stringify({ rate: parseFloat(rate) }) });
-            if (result.success) { showToast(result.message, 'success'); loadStats(); }
-            else { showToast(result.message || 'Failed to update', 'error'); }
-        }
+        // ============ USER MANAGEMENT ============
+        function openAddUserModal() { document.getElementById('addUserModal').style.display = 'flex'; document.getElementById('addUserName').value = ''; document.getElementById('addUserEmail').value = ''; document.getElementById('addUserPassword').value = ''; document.getElementById('addUserPhone').value = ''; document.getElementById('addUserLocation').value = ''; }
+        async function createUser() { const full_name = document.getElementById('addUserName').value; const email = document.getElementById('addUserEmail').value; const password = document.getElementById('addUserPassword').value; const phone = document.getElementById('addUserPhone').value; const location = document.getElementById('addUserLocation').value; const user_type = document.getElementById('addUserType').value; if (!full_name || !email || !password) { showToast('Name, email, and password are required', 'error'); return; } const result = await apiCall('/api/admin/users', { method: 'POST', body: JSON.stringify({ full_name, email, password, phone, location, user_type }) }); if (result.success) { showToast('User created successfully!', 'success'); closeAddUserModal(); loadUsers(); loadStats(); } else { showToast(result.message || 'Failed to create user', 'error'); } }
+        function openEditUserModal(userId) { const user = allUsers.find(u => u.id === userId); if (!user) return; currentEditUserId = userId; document.getElementById('editUserName').value = user.full_name; document.getElementById('editUserEmail').value = user.email; document.getElementById('editUserPhone').value = user.phone || ''; document.getElementById('editUserLocation').value = user.location || ''; document.getElementById('editUserType').value = user.user_type; document.getElementById('editUserStatus').value = user.is_active ? 'active' : 'inactive'; document.getElementById('editUserVerified').value = user.is_verified ? 'true' : 'false'; document.getElementById('editUserModal').style.display = 'flex'; }
+        async function saveUserEdit() { const userData = { full_name: document.getElementById('editUserName').value, phone: document.getElementById('editUserPhone').value, location: document.getElementById('editUserLocation').value, user_type: document.getElementById('editUserType').value, is_active: document.getElementById('editUserStatus').value === 'active', is_verified: document.getElementById('editUserVerified').value === 'true' }; const result = await apiCall(`/api/admin/users/${currentEditUserId}`, { method: 'PUT', body: JSON.stringify(userData) }); if (result.success) { showToast('User updated successfully!', 'success'); closeEditUserModal(); loadUsers(); loadStats(); } else { showToast(result.message || 'Failed to update user', 'error'); } }
+        async function toggleUserStatus(userId) { const result = await apiCall(`/api/admin/users/${userId}/toggle-status`, { method: 'PUT' }); if (result.success) { showToast(result.message, 'success'); loadUsers(); loadStats(); } else { showToast('Failed to update user status', 'error'); } }
+        async function deleteUser(userId, userName) { if (confirm(`⚠️ Are you sure you want to DELETE "${userName}"?\n\nThis action CANNOT be undone!`)) { const result = await apiCall(`/api/admin/users/${userId}`, { method: 'DELETE' }); if (result.success) { showToast(`User "${userName}" has been deleted`, 'success'); loadUsers(); loadStats(); } else { showToast(result.message || 'Failed to delete user', 'error'); } } }
+        function openResetPasswordModal(userId, userName) { currentResetUserId = userId; document.getElementById('resetUserName').innerText = userName; document.getElementById('resetPassword').value = ''; document.getElementById('resetConfirmPassword').value = ''; document.getElementById('resetPasswordModal').style.display = 'flex'; }
+        async function confirmResetPassword() { const password = document.getElementById('resetPassword').value; const confirm = document.getElementById('resetConfirmPassword').value; if (!password) { showToast('Please enter a password', 'error'); return; } if (password !== confirm) { showToast('Passwords do not match', 'error'); return; } if (password.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; } const result = await apiCall(`/api/admin/users/${currentResetUserId}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: password }) }); if (result.success) { showToast('Password reset successfully!', 'success'); closeResetPasswordModal(); } else { showToast(result.message || 'Failed to reset password', 'error'); } }
+        function openEditJobModal(id, title, description, budget, status) { currentEditJobId = id; document.getElementById('editJobTitle').value = title; document.getElementById('editJobDescription').value = description; document.getElementById('editJobBudget').value = budget; document.getElementById('editJobStatus').value = status; document.getElementById('editJobModal').style.display = 'flex'; }
+        async function saveJobEdit() { const jobData = { title: document.getElementById('editJobTitle').value, description: document.getElementById('editJobDescription').value, budget: parseFloat(document.getElementById('editJobBudget').value), status: document.getElementById('editJobStatus').value }; const result = await apiCall(`/api/admin/jobs/${currentEditJobId}`, { method: 'PUT', body: JSON.stringify(jobData) }); if (result.success) { showToast('Job updated successfully!', 'success'); closeEditJobModal(); loadJobs(); loadStats(); } else { showToast(result.message || 'Failed to update job', 'error'); } }
+        async function deleteJob(jobId) { if (confirm('⚠️ Are you sure you want to delete this job?')) { const result = await apiCall(`/api/admin/jobs/${jobId}`, { method: 'DELETE' }); if (result.success) { showToast('Job deleted successfully!', 'success'); loadJobs(); loadStats(); } else { showToast('Failed to delete job', 'error'); } } }
+        async function deleteService(serviceId) { if (confirm('⚠️ Are you sure you want to delete this service?')) { const result = await apiCall(`/api/admin/services/${serviceId}`, { method: 'DELETE' }); if (result.success) { showToast('Service deleted successfully!', 'success'); loadServices(); } else { showToast('Failed to delete service', 'error'); } } }
+        async function updateCommissionRate() { const rate = document.getElementById('commissionRate').value; if (!rate || rate < 0 || rate > 100) { showToast('Please enter a rate between 0 and 100', 'error'); return; } const result = await apiCall('/api/commission/rate', { method: 'PUT', body: JSON.stringify({ rate: parseFloat(rate) }) }); if (result.success) { showToast(result.message, 'success'); loadStats(); } else { showToast(result.message || 'Failed to update', 'error'); } }
         
         function showTab(tab) {
             document.getElementById('overviewTab').style.display = tab === 'overview' ? 'block' : 'none';
+            document.getElementById('postJobTab').style.display = tab === 'postJob' ? 'block' : 'none';
             document.getElementById('transactionsTab').style.display = tab === 'transactions' ? 'block' : 'none';
             document.getElementById('usersTab').style.display = tab === 'users' ? 'block' : 'none';
             document.getElementById('jobsTab').style.display = tab === 'jobs' ? 'block' : 'none';
             document.getElementById('servicesTab').style.display = tab === 'services' ? 'block' : 'none';
+            document.getElementById('publicJobsTab').style.display = tab === 'publicJobs' ? 'block' : 'none';
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             if (tab === 'users') loadUsers();
             if (tab === 'jobs') loadJobs();
             if (tab === 'services') loadServices();
+            if (tab === 'publicJobs') loadPublicJobs();
         }
         
         function closeAddUserModal() { document.getElementById('addUserModal').style.display = 'none'; }
@@ -833,20 +576,14 @@ function copyToClipboard(text) {
         function closeResetPasswordModal() { document.getElementById('resetPasswordModal').style.display = 'none'; currentResetUserId = null; }
         function closeEditJobModal() { document.getElementById('editJobModal').style.display = 'none'; currentEditJobId = null; }
         
-        function showToast(msg, type) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
-            toast.style.display = 'block';
-            setTimeout(() => toast.style.display = 'none', 3000);
-        }
-        
+        function showToast(msg, type) { const toast = document.getElementById('toast'); toast.textContent = msg; toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981'; toast.style.display = 'block'; setTimeout(() => toast.style.display = 'none', 3000); }
         function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
         function logout() { localStorage.clear(); window.location.href = 'index.html'; }
         
         // Initialize
         loadDashboard();
         loadTransactions();
+        loadCategoriesForAdmin();
         setInterval(() => { loadStats(); }, 30000);
     </script>
 </body>
