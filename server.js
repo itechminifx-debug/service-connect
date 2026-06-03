@@ -2396,7 +2396,6 @@ app.get('/api/admin/chat-analytics', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-// ==================== ADMIN JOB POSTING (For Providers) ====================
 
 // ==================== ADMIN JOB POSTING FOR PROVIDERS ====================
 
@@ -2513,6 +2512,179 @@ app.get('/api/public/jobs', async (req, res) => {
     } catch (error) {
         console.error('Get public jobs error:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==================== ADMIN JOB POSTING (CONNECTED TO MARKETPLACE) ====================
+
+// Admin creates a job for a provider (appears in BOTH job board AND marketplace)
+app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    
+    const { 
+        title, description, budget, location, category_id,
+        external_provider_name, external_provider_phone, external_provider_email,
+        preferred_date 
+    } = req.body;
+    
+    if (!title || !description || !category_id) {
+        return res.status(400).json({ success: false, message: 'Title, description, and category are required' });
+    }
+    
+    try {
+        // Generate unique share token
+        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        
+        // Insert into job_posts (this will appear in marketplace for seekers to bid on)
+        const result = await pool.query(
+            `INSERT INTO job_posts (
+                seeker_id, category_id, title, description, budget, location, preferred_date,
+                external_provider_name, external_provider_phone, external_provider_email,
+                share_token, posted_by_admin, is_public, status
+             ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true, 'open'
+             ) RETURNING *`,
+            [req.user.id, category_id, title, description, budget, location, preferred_date,
+             external_provider_name, external_provider_phone, external_provider_email,
+             shareToken]
+        );
+        
+        const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
+        
+        res.json({ 
+            success: true, 
+            job: result.rows[0],
+            shareable_link: shareableUrl,
+            message: 'Job posted! It will appear in both Public Job Board and Marketplace for seekers to bid on.'
+        });
+    } catch (error) {
+        console.error('Admin create job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get public job by share token (for job-view.html)
+app.get('/api/public/job/:token', async (req, res) => {
+    const { token } = req.params;
+    
+    try {
+        const result = await pool.query(
+            `SELECT jp.*, c.name as category_name, c.icon as category_icon
+             FROM job_posts jp
+             JOIN categories c ON jp.category_id = c.id
+             WHERE jp.share_token = $1 AND jp.is_public = true`,
+            [token]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Job not found' });
+        }
+        
+        // Increment view count
+        await pool.query('UPDATE job_posts SET view_count = view_count + 1 WHERE share_token = $1', [token]);
+        
+        res.json({ success: true, job: result.rows[0] });
+    } catch (error) {
+        console.error('Get public job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all public jobs (for job board listing)
+app.get('/api/public/jobs', async (req, res) => {
+    const { category, location, limit = 20 } = req.query;
+    
+    try {
+        let query = `
+            SELECT jp.id, jp.title, jp.budget, jp.location, jp.share_token, jp.view_count, jp.created_at,
+                   c.name as category_name, c.icon as category_icon
+            FROM job_posts jp
+            JOIN categories c ON jp.category_id = c.id
+            WHERE jp.is_public = true AND jp.status = 'open'
+        `;
+        let params = [];
+        let paramCount = 1;
+        
+        if (category) {
+            query += ` AND jp.category_id = $${paramCount}`;
+            params.push(category);
+            paramCount++;
+        }
+        if (location) {
+            query += ` AND jp.location ILIKE $${paramCount}`;
+            params.push(`%${location}%`);
+            paramCount++;
+        }
+        
+        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
+        params.push(limit);
+        
+        const result = await pool.query(query, params);
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        console.error('Get public jobs error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get marketplace services (UPDATED to also show public jobs)
+app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
+    try {
+        // Get both: provider services AND public jobs
+        const servicesResult = await pool.query(`
+            SELECT 
+                ps.id,
+                ps.title,
+                ps.description,
+                ps.price,
+                ps.price_type,
+                ps.provider_id,
+                ps.created_at,
+                u.full_name as provider_name,
+                u.location as provider_location,
+                u.rating as provider_rating,
+                u.total_reviews as provider_reviews,
+                c.name as category_name,
+                c.icon as category_icon,
+                c.id as category_id,
+                'service' as item_type
+            FROM provider_services ps
+            JOIN users u ON ps.provider_id = u.id
+            JOIN categories c ON ps.category_id = c.id
+            WHERE ps.is_active = true AND u.is_active = true
+            
+            UNION ALL
+            
+            SELECT 
+                jp.id,
+                jp.title,
+                jp.description,
+                jp.budget as price,
+                'fixed' as price_type,
+                NULL as provider_id,
+                jp.created_at,
+                jp.external_provider_name as provider_name,
+                jp.location as provider_location,
+                0 as provider_rating,
+                0 as provider_reviews,
+                c.name as category_name,
+                c.icon as category_icon,
+                c.id as category_id,
+                'job' as item_type
+            FROM job_posts jp
+            JOIN categories c ON jp.category_id = c.id
+            WHERE jp.is_public = true AND jp.status = 'open' AND jp.posted_by_admin = true
+            
+            ORDER BY created_at DESC
+        `);
+        
+        console.log(`Marketplace: Found ${servicesResult.rows.length} items (services + public jobs)`);
+        res.json(servicesResult.rows);
+    } catch (error) {
+        console.error('Marketplace error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 // ==================== START SERVER ====================
