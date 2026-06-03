@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Board | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #1e293b; }
+        
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 22px; font-weight: 700; }
+        .logo span { color: #00c8ff; }
+        .nav-links { display: flex; gap: 15px; align-items: center; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; transition: background 0.3s; cursor: pointer; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
+        
+        .hero { text-align: center; margin-bottom: 40px; }
+        .hero h1 { font-size: 48px; margin-bottom: 20px; }
+        .hero span { color: #00e8a0; }
+        .hero p { color: #64748b; font-size: 18px; }
+        
+        .filters { background: white; border-radius: 20px; padding: 20px; margin-bottom: 30px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .filter-select, .filter-input { padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 14px; flex: 1; min-width: 150px; }
+        .search-btn { background: linear-gradient(135deg, #00c8ff, #00e8a0); border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; color: #0f0c29; }
+        
+        .jobs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; }
+        .job-card { background: white; border-radius: 20px; padding: 20px; transition: transform 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); cursor: pointer; }
+        .job-card:hover { transform: translateY(-3px); }
+        .job-category { display: inline-block; background: rgba(0,200,255,0.1); color: #00c8ff; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-bottom: 12px; }
+        .job-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .job-details { font-size: 13px; color: #64748b; margin: 8px 0; }
+        .job-budget { font-weight: 700; color: #f59e0b; font-size: 18px; margin: 10px 0; }
+        .view-btn { width: 100%; background: linear-gradient(135deg, #00c8ff, #00e8a0); border: none; padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; margin-top: 10px; color: #0f0c29; }
+        
+        .empty-state { text-align: center; padding: 60px; color: #94a3b8; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .hero h1 { font-size: 32px; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Service<span>Connect</span></div>
+        <div class="nav-links">
+            <a href="job-board.html" class="nav-link active">🏠 Job Board</a>
+            <a href="index.html" class="nav-link">🔐 Login</a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="hero">
+            <h1>Find <span>Service Jobs</span> Near You</h1>
+            <p>Browse available jobs posted by local service providers. No login required!</p>
+        </div>
+
+        <div class="filters">
+            <select id="categoryFilter" class="filter-select"><option value="">All Categories</option></select>
+            <input type="text" id="locationFilter" class="filter-input" placeholder="Location">
+            <button class="search-btn" onclick="loadJobs()">🔍 Search Jobs</button>
+        </div>
+        
+        <div id="jobsGrid" class="jobs-grid">
+            <div class="empty-state">Loading jobs...</div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_URL = '';
+
+        async function loadCategories() {
+            try {
+                const response = await fetch(API_URL + '/api/categories');
+                const categories = await response.json();
+                const select = document.getElementById('categoryFilter');
+                select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+            } catch (error) {
+                console.error('Error loading categories:', error);
+            }
+        }
+
+        async function loadJobs() {
+            const category = document.getElementById('categoryFilter').value;
+            const location = document.getElementById('locationFilter').value;
+            
+            let url = API_URL + '/api/public/jobs?';
+            if (category) url += `category=${category}&`;
+            if (location) url += `location=${encodeURIComponent(location)}&`;
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                const container = document.getElementById('jobsGrid');
+                
+                if (!data.success || !data.jobs || data.jobs.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No jobs found. Check back later!</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.jobs.map(job => `
+                    <div class="job-card" onclick="viewJob('${job.share_token}')">
+                        <span class="job-category">${job.category_icon} ${job.category_name}</span>
+                        <div class="job-title">${escapeHtml(job.title)}</div>
+                        <div class="job-details">📍 ${escapeHtml(job.location || 'Location not specified')}</div>
+                        <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
+                        <div class="job-details">📅 Posted: ${new Date(job.created_at).toLocaleDateString()}</div>
+                        <div class="job-details">👁️ ${job.view_count || 0} views</div>
+                        <button class="view-btn">View Details →</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading jobs:', error);
+                container.innerHTML = '<div class="empty-state">Error loading jobs. Please refresh.</div>';
+            }
+        }
+
+        function viewJob(token) {
+            window.open(`${API_URL}/job-view.html?token=${token}`, '_blank');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+        }
+
+        loadCategories();
+        loadJobs();
+    </script>
+</body>
+</html>
