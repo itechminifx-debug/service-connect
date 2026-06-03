@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Details | Service Connect</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; color: #1e293b; }
+        
+        .navbar { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: white; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .logo { font-size: 22px; font-weight: 700; }
+        .logo span { color: #00c8ff; }
+        .nav-links { display: flex; gap: 15px; align-items: center; }
+        .nav-link { color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; transition: background 0.3s; cursor: pointer; }
+        .nav-link:hover { background: rgba(255,255,255,0.1); }
+        
+        .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+        
+        .job-card { background: white; border-radius: 24px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .job-category { display: inline-block; background: rgba(0,200,255,0.1); color: #00c8ff; padding: 6px 16px; border-radius: 20px; font-size: 12px; margin-bottom: 16px; }
+        .job-title { font-size: 28px; font-weight: 700; margin-bottom: 16px; }
+        .job-budget { font-size: 24px; font-weight: 700; color: #f59e0b; margin-bottom: 20px; }
+        .job-detail { margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 16px; }
+        .job-detail i { width: 30px; color: #00c8ff; }
+        .job-description { line-height: 1.6; margin: 20px 0; color: #475569; }
+        
+        .share-section { margin: 30px 0; padding: 20px; background: #f8fafc; border-radius: 16px; text-align: center; }
+        .share-link { background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin: 15px 0; word-break: break-all; font-family: monospace; }
+        .share-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .share-btn { padding: 10px 20px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+        .facebook { background: #1877f2; color: white; }
+        .whatsapp { background: #25d366; color: white; }
+        .twitter { background: #1da1f2; color: white; }
+        .copy-btn { background: #64748b; color: white; }
+        
+        .loading-state { text-align: center; padding: 60px; }
+        .error-state { text-align: center; padding: 60px; color: #ef4444; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        
+        @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .job-title { font-size: 22px; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Service<span>Connect</span></div>
+        <div class="nav-links">
+            <a href="job-board.html" class="nav-link">🏠 Job Board</a>
+            <a href="index.html" class="nav-link">🔐 Login</a>
+        </div>
+    </nav>
+
+    <div class="container" id="container">
+        <div class="loading-state">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p>Loading job details...</p>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API_URL = '';
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        if (!token) {
+            document.getElementById('container').innerHTML = '<div class="error-state">❌ No job specified</div>';
+        }
+
+        async function loadJob() {
+            try {
+                const response = await fetch(`${API_URL}/api/public/job/${token}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    document.getElementById('container').innerHTML = `
+                        <div class="error-state">
+                            <i class="fas fa-exclamation-triangle fa-3x"></i>
+                            <p>${data.message || 'Job not found'}</p>
+                            <a href="job-board.html" style="display: inline-block; margin-top: 20px;">← Back to Job Board</a>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const job = data.job;
+                const shareUrl = window.location.href;
+                
+                document.getElementById('container').innerHTML = `
+                    <div class="job-card">
+                        <span class="job-category">${job.category_icon} ${job.category_name}</span>
+                        <h1 class="job-title">${escapeHtml(job.title)}</h1>
+                        <div class="job-budget">💰 GHS ${job.budget || 'Negotiable'}</div>
+                        
+                        <div class="job-detail">
+                            <p><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> ${escapeHtml(job.location || 'Not specified')}</p>
+                            <p style="margin-top: 10px;"><i class="fas fa-calendar"></i> <strong>Preferred Date:</strong> ${job.preferred_date || 'Flexible'}</p>
+                            <p style="margin-top: 10px;"><i class="fas fa-eye"></i> <strong>Views:</strong> ${job.view_count || 0}</p>
+                        </div>
+                        
+                        <div class="job-description">
+                            <h3>📝 Description</h3>
+                            <p>${escapeHtml(job.description || 'No description provided.')}</p>
+                        </div>
+                        
+                        <div class="share-section">
+                            <h3><i class="fas fa-share-alt"></i> Share this job</h3>
+                            <div class="share-link">${shareUrl}</div>
+                            <div class="share-buttons">
+                                <button class="share-btn facebook" onclick="shareOnFacebook('${shareUrl}', '${escapeHtml(job.title)}')">
+                                    <i class="fab fa-facebook-f"></i> Facebook
+                                </button>
+                                <button class="share-btn whatsapp" onclick="shareOnWhatsApp('${shareUrl}', '${escapeHtml(job.title)}')">
+                                    <i class="fab fa-whatsapp"></i> WhatsApp
+                                </button>
+                                <button class="share-btn twitter" onclick="shareOnTwitter('${shareUrl}', '${escapeHtml(job.title)}')">
+                                    <i class="fab fa-twitter"></i> Twitter
+                                </button>
+                                <button class="share-btn copy-btn" onclick="copyToClipboard('${shareUrl}')">
+                                    <i class="fas fa-copy"></i> Copy Link
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: center; margin-top: 20px;">
+                            <p style="color: #64748b;">👇 Interested in this job?</p>
+                            <a href="index.html" class="view-btn" style="display: inline-block; margin-top: 10px; padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 12px;">Sign up to apply →</a>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading job:', error);
+                document.getElementById('container').innerHTML = '<div class="error-state">Error loading job. Please try again.</div>';
+            }
+        }
+
+        function shareOnFacebook(url, title) {
+            window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
+        }
+
+        function shareOnWhatsApp(url, title) {
+            window.open(`https://wa.me/?text=${encodeURIComponent(title + ' - ' + url)}`, '_blank');
+        }
+
+        function shareOnTwitter(url, title) {
+            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`, '_blank');
+        }
+
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast('Link copied to clipboard!', 'success');
+            } catch (err) {
+                showToast('Failed to copy', 'error');
+            }
+        }
+
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+        }
+
+        loadJob();
+    </script>
+</body>
+</html>
