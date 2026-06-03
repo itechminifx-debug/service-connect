@@ -80,7 +80,9 @@
                 const response = await fetch(API_URL + '/api/categories');
                 const categories = await response.json();
                 const select = document.getElementById('categoryFilter');
-                select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                if (categories && categories.length > 0) {
+                    select.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+                }
             } catch (error) {
                 console.error('Error loading categories:', error);
             }
