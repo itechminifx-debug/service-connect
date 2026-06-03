@@ -1162,102 +1162,291 @@ app.get('/api/admin/revenue/chart', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== CHAT SYSTEM (COMPLETELY REWRITTEN) ====================
 
-// ==================== CHAT SYSTEM ====================
-async function getOrCreateConversation(seekerId, providerId, jobId = null, directHireId = null) {
-    let result = await pool.query(
-        `SELECT * FROM conversations WHERE seeker_id = $1 AND provider_id = $2`,
+// Get or create conversation
+async function getOrCreateConversation(seekerId, providerId, jobId = null) {
+    // Check if conversation exists
+    const checkResult = await pool.query(
+        `SELECT * FROM conversations 
+         WHERE seeker_id = $1 AND provider_id = $2`,
         [seekerId, providerId]
     );
     
-    if (result.rows.length > 0) {
-        return result.rows[0];
+    if (checkResult.rows.length > 0) {
+        return checkResult.rows[0];
     }
     
+    // Create new conversation
     const insertResult = await pool.query(
-        `INSERT INTO conversations (seeker_id, provider_id, job_id, direct_hire_id)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO conversations (seeker_id, provider_id, job_id, updated_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
          RETURNING *`,
-        [seekerId, providerId, jobId || null, directHireId || null]
+        [seekerId, providerId, jobId]
     );
     
     return insertResult.rows[0];
 }
 
+// Get all conversations for current user
+app.get('/api/conversations', authenticateToken, async (req, res) => {
+    try {
+        let query;
+        const userId = req.user.id;
+        
+        if (req.user.user_type === 'seeker') {
+            query = `
+                SELECT c.*, 
+                       u.full_name as other_user_name,
+                       u.email as other_user_email,
+                       (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = $1 AND is_read = false) as unread_count
+                FROM conversations c
+                JOIN users u ON c.provider_id = u.id
+                WHERE c.seeker_id = $1
+                ORDER BY c.updated_at DESC
+            `;
+        } else {
+            query = `
+                SELECT c.*, 
+                       u.full_name as other_user_name,
+                       u.email as other_user_email,
+                       (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = $1 AND is_read = false) as unread_count
+                FROM conversations c
+                JOIN users u ON c.seeker_id = u.id
+                WHERE c.provider_id = $1
+                ORDER BY c.updated_at DESC
+            `;
+        }
+        
+        const result = await pool.query(query, [userId]);
+        res.json({ success: true, conversations: result.rows });
+    } catch (error) {
+        console.error('Get conversations error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Start a new conversation (seeker)
 app.post('/api/conversations', authenticateToken, async (req, res) => {
-    const { provider_id, job_id, direct_hire_id } = req.body;
+    const { provider_id, job_id } = req.body;
     
     if (req.user.user_type !== 'seeker') {
-        return res.status(403).json({ success: false, message: 'Only seekers can initiate conversations' });
+        return res.status(403).json({ success: false, message: 'Only seekers can start conversations' });
     }
     
-    const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id, direct_hire_id);
-    res.json({ success: true, conversation });
+    try {
+        const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id);
+        res.json({ success: true, conversation });
+    } catch (error) {
+        console.error('Start conversation error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
+// Start a new conversation (provider)
 app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
-    const { seeker_id, job_id, direct_hire_id } = req.body;
+    const { seeker_id, job_id } = req.body;
     
     if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can initiate conversations' });
+        return res.status(403).json({ success: false, message: 'Only providers can start conversations' });
     }
     
-    const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id, direct_hire_id);
-    res.json({ success: true, conversation });
+    try {
+        const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id);
+        res.json({ success: true, conversation });
+    } catch (error) {
+        console.error('Start conversation error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
-// Send message with tracking
+// Send a message
 app.post('/api/messages', authenticateToken, async (req, res) => {
     const { conversation_id, receiver_id, message } = req.body;
+    
+    console.log('Send message request:', { conversation_id, receiver_id, message, user: req.user.id });
+    
+    if (!message || message.trim() === '') {
+        return res.status(400).json({ success: false, message: 'Message cannot be empty' });
+    }
     
     try {
         let conversation;
         let receiverId = receiver_id;
         
         if (conversation_id) {
-            const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversation_id]);
+            // Get existing conversation
+            const convResult = await pool.query(
+                'SELECT * FROM conversations WHERE id = $1',
+                [conversation_id]
+            );
+            
+            if (convResult.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'Conversation not found' });
+            }
+            
             conversation = convResult.rows[0];
-            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
+            // Determine receiver based on who is sending
+            if (conversation.seeker_id === req.user.id) {
+                receiverId = conversation.provider_id;
+            } else {
+                receiverId = conversation.seeker_id;
+            }
         } else {
-            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
-            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
-            conversation = await getOrCreateConversation(seekerId, providerId);
+            // Create new conversation
+            if (!receiver_id) {
+                return res.status(400).json({ success: false, message: 'Receiver ID required' });
+            }
+            
+            if (req.user.user_type === 'seeker') {
+                conversation = await getOrCreateConversation(req.user.id, receiver_id);
+            } else {
+                conversation = await getOrCreateConversation(receiver_id, req.user.id);
+            }
+            receiverId = receiver_id;
         }
         
-        // Get IP and user agent for tracking
-        const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        const userAgent = req.headers['user-agent'];
-        
+        // Insert message
         const result = await pool.query(
-            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, ip_address, user_agent)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message)
+             VALUES ($1, $2, $3, $4)
              RETURNING *`,
-            [conversation.id, req.user.id, receiverId, message, ipAddress, userAgent]
+            [conversation.id, req.user.id, receiverId, message]
         );
         
-        await pool.query(
-            `UPDATE conversations 
-             SET last_message = $1, last_message_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [message, conversation.id]
+        // Update conversation last message and unread count
+        const updateQuery = `
+            UPDATE conversations 
+            SET last_message = $1, 
+                last_message_time = CURRENT_TIMESTAMP, 
+                updated_at = CURRENT_TIMESTAMP,
+                ${conversation.seeker_id === req.user.id ? 'provider_unread_count = provider_unread_count + 1' : 'seeker_unread_count = seeker_unread_count + 1'}
+            WHERE id = $2
+        `;
+        
+        await pool.query(updateQuery, [message, conversation.id]);
+        
+        // Get message with sender info
+        const messageWithSender = await pool.query(
+            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
+             FROM messages m 
+             JOIN users u ON m.sender_id = u.id 
+             WHERE m.id = $1`,
+            [result.rows[0].id]
         );
         
-        // Update analytics
-        await pool.query(`
-            INSERT INTO chat_analytics (date, total_messages, unique_conversations)
-            VALUES (CURRENT_DATE, 1, 1)
-            ON CONFLICT (date) DO UPDATE SET
-                total_messages = chat_analytics.total_messages + 1,
-                unique_conversations = chat_analytics.unique_conversations + 1
-        `);
+        console.log('Message sent successfully:', messageWithSender.rows[0]);
         
-        res.json({ success: true, message: result.rows[0] });
+        res.json({ success: true, message: messageWithSender.rows[0] });
     } catch (error) {
         console.error('Send message error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+// Get messages for a conversation
+app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
+    const { conversationId } = req.params;
+    
+    try {
+        // Verify access
+        const convResult = await pool.query(
+            'SELECT * FROM conversations WHERE id = $1',
+            [conversationId]
+        );
+        
+        if (convResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+        
+        const conversation = convResult.rows[0];
+        
+        if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+        
+        // Get messages
+        const messagesResult = await pool.query(
+            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
+             FROM messages m 
+             JOIN users u ON m.sender_id = u.id
+             WHERE m.conversation_id = $1 
+             ORDER BY m.created_at ASC`,
+            [conversationId]
+        );
+        
+        // Mark messages as read
+        await pool.query(
+            `UPDATE messages 
+             SET is_read = true 
+             WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
+            [conversationId, req.user.id]
+        );
+        
+        // Reset unread count for this user
+        if (req.user.user_type === 'seeker') {
+            await pool.query('UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1', [conversationId]);
+        } else {
+            await pool.query('UPDATE conversations SET provider_unread_count = 0 WHERE id = $1', [conversationId]);
+        }
+        
+        res.json({ 
+            success: true, 
+            messages: messagesResult.rows, 
+            conversation 
+        });
+    } catch (error) {
+        console.error('Get messages error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get unread message count
+app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+    try {
+        let result;
+        if (req.user.user_type === 'seeker') {
+            result = await pool.query(
+                'SELECT COALESCE(SUM(seeker_unread_count), 0) as total FROM conversations WHERE seeker_id = $1',
+                [req.user.id]
+            );
+        } else {
+            result = await pool.query(
+                'SELECT COALESCE(SUM(provider_unread_count), 0) as total FROM conversations WHERE provider_id = $1',
+                [req.user.id]
+            );
+        }
+        res.json({ success: true, unread_count: parseInt(result.rows[0].total) || 0 });
+    } catch (error) {
+        console.error('Get unread count error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Mark conversation as read
+app.put('/api/conversations/:conversationId/read', authenticateToken, async (req, res) => {
+    const { conversationId } = req.params;
+    
+    try {
+        if (req.user.user_type === 'seeker') {
+            await pool.query('UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1', [conversationId]);
+        } else {
+            await pool.query('UPDATE conversations SET provider_unread_count = 0 WHERE id = $1', [conversationId]);
+        }
+        
+        await pool.query(
+            `UPDATE messages 
+             SET is_read = true 
+             WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
+            [conversationId, req.user.id]
+        );
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Mark read error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
     const { conversationId } = req.params;
     
