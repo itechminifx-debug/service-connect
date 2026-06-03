@@ -2445,98 +2445,13 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== PUBLIC JOB BOARD ENDPOINTS ====================
 
-// Get all public jobs (for admin to see)
-app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { public_only, search, status, limit = 100 } = req.query;
-    
-    try {
-        let query = `
-            SELECT jp.*, c.name as category_name, c.icon as category_icon,
-                   u.full_name as seeker_name
-            FROM job_posts jp
-            LEFT JOIN categories c ON jp.category_id = c.id
-            LEFT JOIN users u ON jp.seeker_id = u.id
-            WHERE 1=1
-        `;
-        let params = [];
-        let paramCount = 1;
-        
-        if (public_only === 'true') {
-            query += ` AND jp.is_public = true`;
-        }
-        
-        if (search) {
-            query += ` AND jp.title ILIKE $${paramCount}`;
-            params.push(`%${search}%`);
-            paramCount++;
-        }
-        
-        if (status) {
-            query += ` AND jp.status = $${paramCount}`;
-            params.push(status);
-            paramCount++;
-        }
-        
-        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
-        params.push(limit);
-        
-        const result = await pool.query(query, params);
-        res.json({ success: true, jobs: result.rows });
-    } catch (error) {
-        console.error('Get admin jobs error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update job (admin)
-app.put('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { id } = req.params;
-    const { title, description, budget, status } = req.body;
-    
-    try {
-        await pool.query(
-            `UPDATE job_posts 
-             SET title = COALESCE($1, title),
-                 description = COALESCE($2, description),
-                 budget = COALESCE($3, budget),
-                 status = COALESCE($4, status)
-             WHERE id = $5`,
-            [title, description, budget, status, id]
-        );
-        res.json({ success: true, message: 'Job updated successfully' });
-    } catch (error) {
-        console.error('Update job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete job (admin)
-app.delete('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { id } = req.params;
-    
-    try {
-        await pool.query('DELETE FROM job_posts WHERE id = $1', [id]);
-        res.json({ success: true, message: 'Job deleted successfully' });
-    } catch (error) {
-        console.error('Delete job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-    // Get public job by share token (no authentication required)
+// Get public job by share token (no authentication required)
 app.get('/api/public/job/:token', async (req, res) => {
     const { token } = req.params;
+    
+    console.log(`🔍 Looking for job with token: ${token}`);
     
     try {
         const result = await pool.query(
@@ -2548,8 +2463,11 @@ app.get('/api/public/job/:token', async (req, res) => {
         );
         
         if (result.rows.length === 0) {
+            console.log(`❌ Job not found for token: ${token}`);
             return res.status(404).json({ success: false, message: 'Job not found' });
         }
+        
+        console.log(`✅ Job found: ${result.rows[0].title}`);
         
         // Increment view count
         await pool.query('UPDATE job_posts SET view_count = view_count + 1 WHERE share_token = $1', [token]);
@@ -2561,13 +2479,14 @@ app.get('/api/public/job/:token', async (req, res) => {
     }
 });
 
-// Get all public jobs (for job board)
+// Get all public jobs (for job board listing)
 app.get('/api/public/jobs', async (req, res) => {
     const { category, location, limit = 20 } = req.query;
     
     try {
         let query = `
-            SELECT jp.*, c.name as category_name, c.icon as category_icon
+            SELECT jp.id, jp.title, jp.budget, jp.location, jp.share_token, jp.view_count, jp.created_at,
+                   c.name as category_name, c.icon as category_icon
             FROM job_posts jp
             JOIN categories c ON jp.category_id = c.id
             WHERE jp.is_public = true AND jp.status = 'open'
@@ -2595,7 +2514,6 @@ app.get('/api/public/jobs', async (req, res) => {
         console.error('Get public jobs error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-});
 });
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
