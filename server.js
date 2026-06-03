@@ -2635,9 +2635,7 @@ app.get('/api/public/jobs', async (req, res) => {
 
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        console.log('📊 Marketplace API called - User:', req.user.id, 'Type:', req.user.user_type);
-        
-        // 1. Get all services from providers
+        // Get services from providers
         const services = await pool.query(`
             SELECT 
                 ps.id,
@@ -2653,7 +2651,7 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
                 c.name as category_name,
                 c.icon as category_icon,
                 c.id as category_id,
-                'service' as type
+                'service' as item_type
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
             JOIN categories c ON ps.category_id = c.id
@@ -2661,7 +2659,7 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
             ORDER BY ps.created_at DESC
         `);
         
-        // 2. Get ALL open jobs (including those posted by admin)
+        // Get jobs posted by admin
         const jobs = await pool.query(`
             SELECT 
                 jp.id,
@@ -2677,24 +2675,17 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
                 c.name as category_name,
                 c.icon as category_icon,
                 c.id as category_id,
-                'job' as type
+                'job' as item_type
             FROM job_posts jp
             JOIN categories c ON jp.category_id = c.id
-            WHERE jp.status = 'open'
+            WHERE jp.status = 'open' AND jp.posted_by_admin = true
             ORDER BY jp.created_at DESC
         `);
         
-        console.log(`📊 Found: ${services.rows.length} services, ${jobs.rows.length} jobs`);
-        
-        // Log the jobs found for debugging
-        if (jobs.rows.length > 0) {
-            console.log('Jobs found:', jobs.rows.map(j => ({ id: j.id, title: j.title })));
-        } else {
-            console.log('No jobs found in database with status "open"');
-        }
-        
         // Combine results
         const allItems = [...services.rows, ...jobs.rows];
+        
+        console.log(`📊 API Returning: ${services.rows.length} services, ${jobs.rows.length} jobs`);
         
         res.json(allItems);
     } catch (error) {
