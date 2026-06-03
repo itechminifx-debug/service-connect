@@ -2517,7 +2517,7 @@ app.get('/api/public/jobs', async (req, res) => {
 
 // ==================== ADMIN JOB POSTING (CONNECTED TO MARKETPLACE) ====================
 
-// Admin creates a job for a provider (appears in BOTH job board AND marketplace)
+// Admin creates a job (UPDATED to ensure posted_by_admin = true)
 app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
@@ -2537,7 +2537,7 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
         // Generate unique share token
         const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
         
-        // Insert into job_posts (this will appear in marketplace for seekers to bid on)
+        // Insert into job_posts with posted_by_admin = true
         const result = await pool.query(
             `INSERT INTO job_posts (
                 seeker_id, category_id, title, description, budget, location, preferred_date,
@@ -2553,11 +2553,13 @@ app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
         
         const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
         
+        console.log(`✅ Admin posted job: ${title} (ID: ${result.rows[0].id}) - posted_by_admin = true`);
+        
         res.json({ 
             success: true, 
             job: result.rows[0],
             shareable_link: shareableUrl,
-            message: 'Job posted! It will appear in both Public Job Board and Marketplace for seekers to bid on.'
+            message: 'Job posted! It will appear in both Public Job Board and Marketplace.'
         });
     } catch (error) {
         console.error('Admin create job error:', error);
