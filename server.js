@@ -2632,25 +2632,15 @@ app.get('/api/public/jobs', async (req, res) => {
 });
 
 // ==================== FIXED MARKETPLACE API - RETURNS JOBS TOO ====================
-
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
         // Get services from providers
         const services = await pool.query(`
             SELECT 
-                ps.id,
-                ps.title,
-                ps.description,
-                ps.price,
-                ps.price_type,
-                ps.provider_id,
-                ps.created_at,
-                u.full_name as provider_name,
-                u.location as provider_location,
+                ps.id, ps.title, ps.description, ps.price, ps.price_type, ps.provider_id,
+                u.full_name as provider_name, u.location as provider_location,
                 COALESCE(u.rating, 0)::float as provider_rating,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.id as category_id,
+                c.name as category_name, c.icon as category_icon, c.id as category_id,
                 'service' as item_type
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
@@ -2662,19 +2652,11 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
         // Get jobs posted by admin
         const jobs = await pool.query(`
             SELECT 
-                jp.id,
-                jp.title,
-                jp.description,
-                jp.budget as price,
-                'fixed' as price_type,
-                NULL as provider_id,
-                jp.created_at,
+                jp.id, jp.title, jp.description, jp.budget as price,
+                'fixed' as price_type, NULL as provider_id,
                 COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
                 jp.location as provider_location,
-                0 as provider_rating,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.id as category_id,
+                c.name as category_name, c.icon as category_icon, c.id as category_id,
                 'job' as item_type
             FROM job_posts jp
             JOIN categories c ON jp.category_id = c.id
@@ -2682,46 +2664,14 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
             ORDER BY jp.created_at DESC
         `);
         
-        // Combine results
         const allItems = [...services.rows, ...jobs.rows];
         
-        console.log(`📊 API Returning: ${services.rows.length} services, ${jobs.rows.length} jobs`);
+        console.log(`📊 API Returning: ${services.rows.length} services, ${jobs.rows.length} jobs, TOTAL: ${allItems.length}`);
         
         res.json(allItems);
     } catch (error) {
         console.error('Marketplace error:', error);
         res.status(500).json({ error: error.message });
-    }
-});
-// Debug endpoint - check if jobs exist (requires login)
-app.get('/api/debug/marketplace-data', authenticateToken, async (req, res) => {
-    try {
-        // Get services count
-        const servicesCount = await pool.query('SELECT COUNT(*) FROM provider_services WHERE is_active = true');
-        
-        // Get public jobs count
-        const jobsCount = await pool.query(`
-            SELECT COUNT(*) FROM job_posts 
-            WHERE is_public = true AND status = 'open'
-        `);
-        
-        // Get sample jobs
-        const sampleJobs = await pool.query(`
-            SELECT id, title, posted_by_admin, is_public, status 
-            FROM job_posts 
-            WHERE is_public = true 
-            LIMIT 5
-        `);
-        
-        res.json({
-            success: true,
-            services_count: parseInt(servicesCount.rows[0].count),
-            jobs_count: parseInt(jobsCount.rows[0].count),
-            sample_jobs: sampleJobs.rows,
-            message: 'Make sure you are logged in to view marketplace'
-        });
-    } catch (error) {
-        res.json({ error: error.message });
     }
 });
 // ==================== START SERVER ====================
