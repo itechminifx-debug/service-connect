@@ -28,18 +28,27 @@
         .job-description { line-height: 1.6; margin: 20px 0; color: #475569; }
         
         .share-section { margin: 30px 0; padding: 20px; background: #f8fafc; border-radius: 16px; text-align: center; }
-        .share-link { background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin: 15px 0; word-break: break-all; font-family: monospace; }
+        .share-link { background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; margin: 15px 0; word-break: break-all; font-family: monospace; font-size: 12px; }
         .share-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
         .share-btn { padding: 10px 20px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
         .facebook { background: #1877f2; color: white; }
         .whatsapp { background: #25d366; color: white; }
         .twitter { background: #1da1f2; color: white; }
         .copy-btn { background: #64748b; color: white; }
+        .bid-btn { background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; margin-top: 10px; width: 100%; }
+        .login-prompt { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 16px; padding: 20px; text-align: center; margin-top: 20px; }
+        .login-prompt a { color: #f59e0b; font-weight: 600; text-decoration: none; }
         
         .loading-state { text-align: center; padding: 60px; }
         .loading-state i { font-size: 40px; color: #00c8ff; }
         .error-state { text-align: center; padding: 60px; color: #ef4444; }
         .toast { position: fixed; bottom: 30px; right: 30px; background: #10b981; color: white; padding: 12px 24px; border-radius: 12px; display: none; z-index: 1000; }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 30px; max-width: 500px; width: 90%; }
+        .modal-content input, .modal-content textarea { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 15px; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .modal-buttons button { flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: 600; }
         
         @media (max-width: 768px) { .navbar { flex-direction: column; text-align: center; } .job-title { font-size: 22px; } }
     </style>
@@ -50,6 +59,7 @@
         <div class="nav-links">
             <a href="job-board.html" class="nav-link">🏠 Job Board</a>
             <a href="index.html" class="nav-link">🔐 Login</a>
+            <a href="marketplace.html" class="nav-link">🛒 Marketplace</a>
         </div>
     </nav>
 
@@ -60,21 +70,63 @@
         </div>
     </div>
 
+    <!-- Bid Modal -->
+    <div id="bidModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px;">💰 Place Your Bid</h3>
+            <input type="number" id="bidAmount" placeholder="Your bid amount (GHS) *">
+            <input type="number" id="bidDays" placeholder="Estimated days to complete">
+            <textarea id="bidMessage" rows="3" placeholder="Message to client..."></textarea>
+            <div class="modal-buttons">
+                <button onclick="submitBid()" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">Submit Bid</button>
+                <button onclick="closeBidModal()" style="background: #e2e8f0; color: #1e293b;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
     <script>
         const API_URL = '';
+        let token = localStorage.getItem('token');
+        let user = null;
+        let currentJobId = null;
+        
         const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
+        const tokenParam = urlParams.get('token');
 
-        if (!token) {
+        if (!tokenParam) {
             document.getElementById('container').innerHTML = '<div class="error-state">❌ No job specified</div>';
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('user'));
+            // Update nav links if logged in
+            if (user) {
+                const navLinks = document.querySelector('.nav-links');
+                if (user.user_type === 'seeker') {
+                    navLinks.innerHTML = '<a href="seeker-dashboard.html" class="nav-link">📋 Dashboard</a><a href="job-board.html" class="nav-link">🏠 Job Board</a><a href="marketplace.html" class="nav-link">🛒 Marketplace</a><a href="chat.html" class="nav-link">💬 Messages</a>';
+                } else if (user.user_type === 'provider') {
+                    navLinks.innerHTML = '<a href="provider-dashboard.html" class="nav-link">📊 Dashboard</a><a href="job-board.html" class="nav-link">🏠 Job Board</a><a href="marketplace.html" class="nav-link">🛒 Marketplace</a><a href="chat.html" class="nav-link">💬 Messages</a>';
+                } else {
+                    navLinks.innerHTML = '<a href="admin-dashboard.html" class="nav-link">📊 Admin</a><a href="job-board.html" class="nav-link">🏠 Job Board</a><a href="marketplace.html" class="nav-link">🛒 Marketplace</a>';
+                }
+            }
+        } catch(e) {}
+
+        async function apiCall(endpoint, options = {}) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(API_URL + endpoint, { ...options, headers });
+            return response.json();
         }
 
         async function loadJob() {
             try {
-                console.log('Fetching job with token:', token);
-                const response = await fetch(`${API_URL}/api/public/job/${token}`);
+                console.log('Fetching job with token:', tokenParam);
+                const response = await fetch(`${API_URL}/api/public/job/${tokenParam}`);
                 console.log('Response status:', response.status);
                 
                 if (!response.ok) {
@@ -96,25 +148,38 @@
                 }
                 
                 const job = data.job;
+                currentJobId = job.id;
                 const shareUrl = window.location.href;
+                const isSeeker = user && user.user_type === 'seeker';
                 
                 document.getElementById('container').innerHTML = `
                     <div class="job-card">
-                        <span class="job-category">${job.category_icon} ${job.category_name}</span>
+                        <span class="job-category">📋 ${job.category_icon} ${job.category_name}</span>
                         <h1 class="job-title">${escapeHtml(job.title)}</h1>
-                        <div class="job-budget">💰 GHS ${job.budget || 'Negotiable'}</div>
+                        <div class="job-budget">💰 Budget: GHS ${job.budget || 'Negotiable'}</div>
                         
                         <div class="job-detail">
                             <p><i class="fas fa-map-marker-alt"></i> <strong>Location:</strong> ${escapeHtml(job.location || 'Not specified')}</p>
                             <p style="margin-top: 10px;"><i class="fas fa-calendar"></i> <strong>Preferred Date:</strong> ${job.preferred_date || 'Flexible'}</p>
                             <p style="margin-top: 10px;"><i class="fas fa-eye"></i> <strong>Views:</strong> ${job.view_count || 0}</p>
-                            ${job.external_provider_name ? `<p style="margin-top: 10px;"><i class="fas fa-user"></i> <strong>Provider:</strong> ${escapeHtml(job.external_provider_name)}</p>` : ''}
+                            ${job.external_provider_name ? `<p style="margin-top: 10px;"><i class="fas fa-building"></i> <strong>Provider:</strong> ${escapeHtml(job.external_provider_name)}</p>` : ''}
                         </div>
                         
                         <div class="job-description">
-                            <h3>📝 Description</h3>
+                            <h3>📝 Job Description</h3>
                             <p>${escapeHtml(job.description || 'No description provided.')}</p>
                         </div>
+                        
+                        ${isSeeker ? `
+                            <button class="bid-btn" onclick="openBidModal()">
+                                <i class="fas fa-gavel"></i> Place Your Bid
+                            </button>
+                        ` : `
+                            <div class="login-prompt">
+                                <p><i class="fas fa-lock"></i> You need to be logged in as a <strong>Customer (Seeker)</strong> to place a bid.</p>
+                                <a href="index.html">Login or Register →</a>
+                            </div>
+                        `}
                         
                         <div class="share-section">
                             <h3><i class="fas fa-share-alt"></i> Share this job</h3>
@@ -134,11 +199,6 @@
                                 </button>
                             </div>
                         </div>
-                        
-                        <div style="text-align: center; margin-top: 20px;">
-                            <p style="color: #64748b;">👇 Interested in this job?</p>
-                            <a href="index.html" style="display: inline-block; margin-top: 10px; padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669); color: white; text-decoration: none; border-radius: 12px;">Sign up to apply →</a>
-                        </div>
                     </div>
                 `;
             } catch (error) {
@@ -151,6 +211,46 @@
                         <a href="job-board.html" style="display: inline-block; margin-top: 10px;">← Back to Job Board</a>
                     </div>
                 `;
+            }
+        }
+
+        function openBidModal() {
+            document.getElementById('bidAmount').value = '';
+            document.getElementById('bidDays').value = '';
+            document.getElementById('bidMessage').value = '';
+            document.getElementById('bidModal').style.display = 'flex';
+        }
+
+        function closeBidModal() {
+            document.getElementById('bidModal').style.display = 'none';
+        }
+
+        async function submitBid() {
+            const amount = document.getElementById('bidAmount').value;
+            const days = document.getElementById('bidDays').value;
+            const message = document.getElementById('bidMessage').value;
+            
+            if (!amount || amount <= 0) {
+                showToast('Please enter a valid bid amount', 'error');
+                return;
+            }
+            
+            showToast('Submitting bid...', 'info');
+            
+            const result = await apiCall(`/api/jobs/${currentJobId}/bids`, {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    amount: parseFloat(amount), 
+                    estimated_days: days || 1,
+                    message: message 
+                })
+            });
+            
+            if (result.success) {
+                showToast('✅ Bid placed successfully! The job poster will review your bid.', 'success');
+                closeBidModal();
+            } else {
+                showToast(result.message || 'Failed to place bid', 'error');
             }
         }
 
