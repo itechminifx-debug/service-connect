@@ -8,7 +8,7 @@ const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 // Email service (optional - will log if not configured)
 let sendEmail = async (to, type, data) => {
@@ -97,6 +97,12 @@ async function createTables() {
                 preferred_date DATE,
                 status VARCHAR(50) DEFAULT 'open',
                 views INTEGER DEFAULT 0,
+                external_provider_name VARCHAR(255),
+                external_provider_phone VARCHAR(50),
+                external_provider_email VARCHAR(255),
+                share_token VARCHAR(100),
+                posted_by_admin BOOLEAN DEFAULT false,
+                is_public BOOLEAN DEFAULT false,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
@@ -217,6 +223,30 @@ async function createTables() {
             )
         `);
 
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS portfolio_items (
+                id SERIAL PRIMARY KEY,
+                provider_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                image_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS contact_requests (
+                id SERIAL PRIMARY KEY,
+                provider_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                phone VARCHAR(50),
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT false,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         const catCount = await client.query('SELECT COUNT(*) FROM categories');
         if (parseInt(catCount.rows[0].count) === 0) {
             await client.query(`
@@ -296,11 +326,7 @@ app.post('/api/auth/register', async (req, res) => {
             { expiresIn: '7d' }
         );
         
-        // Send Welcome Email
-        sendEmail(email, 'welcome', { 
-            name: full_name, 
-            userType: user_type || 'seeker' 
-        }).catch(console.error);
+        sendEmail(email, 'welcome', { name: full_name, userType: user_type || 'seeker' }).catch(console.error);
         
         res.json({ success: true, token, user });
     } catch (error) {
@@ -328,9 +354,8 @@ app.post('/api/auth/login', async (req, res) => {
         
         const user = result.rows[0];
         
-        // Check if user is active
         if (!user.is_active) {
-            return res.status(401).json({ success: false, message: 'Your account has been deactivated. Please contact support.' });
+            return res.status(401).json({ success: false, message: 'Account deactivated. Contact support.' });
         }
         
         const isValid = await bcrypt.compare(password, user.password_hash);
@@ -751,41 +776,68 @@ app.delete('/api/provider/services/:id', authenticateToken, async (req, res) => 
     }
 });
 
-// ==================== MARKETPLACE & DIRECT HIRE ====================
-// Get all services for marketplace (FIXED)
+// ==================== MARKETPLACE API (FIXED) ====================
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(`
+        console.log('📊 Marketplace API called - User:', req.user.id, 'Type:', req.user.user_type);
+        
+        // PROVIDER VIEW - Only their own services
+        if (req.user.user_type === 'provider') {
+            const services = await pool.query(`
+                SELECT 
+                    ps.id, ps.title, ps.description, ps.price, ps.price_type,
+                    ps.provider_id, ps.created_at,
+                    'service' as item_type
+                FROM provider_services ps
+                WHERE ps.provider_id = $1 AND ps.is_active = true
+                ORDER BY ps.created_at DESC
+            `, [req.user.id]);
+            
+            console.log(`📊 Provider ${req.user.id}: ${services.rows.length} services`);
+            return res.json(services.rows);
+        }
+        
+        // SEEKER VIEW - All services AND public jobs
+        const services = await pool.query(`
             SELECT 
-                ps.id,
-                ps.title,
-                ps.description,
-                ps.price,
-                ps.price_type,
-                ps.provider_id,
-                ps.created_at,
-                u.full_name as provider_name,
-                u.location as provider_location,
-                u.rating as provider_rating,
-                u.total_reviews as provider_reviews,
-                c.name as category_name,
-                c.icon as category_icon,
-                c.id as category_id
+                ps.id, ps.title, ps.description, ps.price, ps.price_type,
+                ps.provider_id, ps.created_at,
+                u.full_name as provider_name, u.location as provider_location,
+                COALESCE(u.rating, 0)::float as provider_rating,
+                c.name as category_name, c.icon as category_icon, c.id as category_id,
+                'service' as item_type
             FROM provider_services ps
             JOIN users u ON ps.provider_id = u.id
             JOIN categories c ON ps.category_id = c.id
             WHERE ps.is_active = true AND u.is_active = true
-            ORDER BY u.rating DESC, ps.created_at DESC
+            ORDER BY ps.created_at DESC
         `);
         
-        console.log(`Marketplace: Found ${result.rows.length} services`);
-        res.json(result.rows);
+        const jobs = await pool.query(`
+            SELECT 
+                jp.id, jp.title, jp.description, jp.budget as price,
+                'fixed' as price_type, NULL as provider_id, jp.created_at,
+                COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
+                jp.location as provider_location, 0 as provider_rating,
+                c.name as category_name, c.icon as category_icon, c.id as category_id,
+                'job' as item_type
+            FROM job_posts jp
+            JOIN categories c ON jp.category_id = c.id
+            WHERE jp.status = 'open' AND jp.is_public = true
+            ORDER BY jp.created_at DESC
+        `);
+        
+        const allItems = [...services.rows, ...jobs.rows];
+        console.log(`📊 Seeker: ${services.rows.length} services, ${jobs.rows.length} jobs, TOTAL: ${allItems.length}`);
+        
+        res.json(allItems);
     } catch (error) {
         console.error('Marketplace error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
+// ==================== DIRECT HIRE ====================
 app.post('/api/direct-hire', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'seeker') {
         return res.status(403).json({ success: false });
@@ -802,20 +854,18 @@ app.post('/api/direct-hire', authenticateToken, async (req, res) => {
         );
         
         const providerInfo = await pool.query(
-            `SELECT u.email, u.full_name as provider_name, ps.title as service_title,
-                    c.full_name as customer_name
+            `SELECT u.email, u.full_name as provider_name, ps.title as service_title
              FROM provider_services ps
              JOIN users u ON ps.provider_id = u.id
-             JOIN users c ON c.id = $1
-             WHERE ps.id = $2`,
-            [req.user.id, service_id]
+             WHERE ps.id = $1`,
+            [service_id]
         );
         
         if (providerInfo.rows.length > 0) {
             sendEmail(providerInfo.rows[0].email, 'newHireRequest', {
                 providerName: providerInfo.rows[0].provider_name,
                 serviceTitle: providerInfo.rows[0].service_title,
-                customerName: providerInfo.rows[0].customer_name,
+                customerName: req.user.full_name || 'A customer',
                 amount: agreed_amount
             }).catch(console.error);
         }
@@ -862,8 +912,6 @@ app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Hire request not found' });
         }
         
-        const hire = hireResult.rows[0];
-        
         await pool.query(
             `UPDATE direct_hires SET status = $1 WHERE id = $2 AND provider_id = $3`,
             [status, id, req.user.id]
@@ -873,17 +921,17 @@ app.put('/api/direct-hire/:id/respond', authenticateToken, async (req, res) => {
             const rateResult = await pool.query(`SELECT setting_value FROM admin_settings WHERE setting_key = 'commission_rate'`);
             const commissionRate = rateResult.rows.length > 0 ? parseFloat(rateResult.rows[0].setting_value) : 10;
             
-            const commission = (hire.agreed_amount * commissionRate) / 100;
-            const providerEarnings = hire.agreed_amount - commission;
+            const commission = (hireResult.rows[0].agreed_amount * commissionRate) / 100;
+            const providerEarnings = hireResult.rows[0].agreed_amount - commission;
             
             await pool.query(
-                `INSERT INTO accepted_jobs (provider_id, seeker_id, service_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted', CURRENT_TIMESTAMP)`,
-                [req.user.id, hire.customer_id, hire.service_id, hire.agreed_amount, commission, providerEarnings, commissionRate]
+                `INSERT INTO accepted_jobs (provider_id, seeker_id, service_id, agreed_amount, platform_commission, provider_earnings, commission_rate, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'accepted')`,
+                [req.user.id, hireResult.rows[0].customer_id, hireResult.rows[0].service_id, hireResult.rows[0].agreed_amount, commission, providerEarnings, commissionRate]
             );
         }
         
-        res.json({ success: true, message: status === 'accepted' ? 'Hire request accepted! Job added to My Jobs.' : 'Hire request declined' });
+        res.json({ success: true });
     } catch (error) {
         console.error('Respond error:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -922,44 +970,106 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
                 [req.user.id]
             );
             res.json(result.rows[0]);
-        } else if (req.user.user_type === 'seeker') {
+        } else {
             const result = await pool.query(
                 `SELECT 
                     (SELECT COUNT(*) FROM job_posts WHERE seeker_id = $1) as total_jobs_posted,
                     (SELECT COUNT(*) FROM bids b JOIN job_posts jp ON b.job_post_id = jp.id WHERE jp.seeker_id = $1) as total_bids_received,
-                    (SELECT COUNT(*) FROM direct_hires WHERE customer_id = $1) as total_direct_hires`,
+                    (SELECT COUNT(*) FROM direct_hires WHERE customer_id = $1) as total_direct_hires,
+                    (SELECT COUNT(*) FROM accepted_jobs WHERE seeker_id = $1 AND status = 'completed') as completed_jobs`,
                 [req.user.id]
             );
             res.json(result.rows[0]);
-        } else {
-            // Admin stats
-            const result = await pool.query(`
-                SELECT 
-                    (SELECT COUNT(*) FROM users) as total_users,
-                    (SELECT COUNT(*) FROM users WHERE user_type = 'seeker') as total_seekers,
-                    (SELECT COUNT(*) FROM users WHERE user_type = 'provider') as total_providers,
-                    (SELECT COUNT(*) FROM job_posts) as total_jobs,
-                    (SELECT COUNT(*) FROM job_posts WHERE status = 'open') as open_jobs,
-                    (SELECT COUNT(*) FROM job_posts WHERE status = 'completed') as completed_jobs,
-                    (SELECT COALESCE(SUM(platform_commission), 0) FROM accepted_jobs WHERE status = 'completed') as total_commission
-                FROM users LIMIT 1
-            `);
-            res.json(result.rows[0]);
         }
     } catch (error) {
-        console.error('Stats error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ==================== ADMIN ENDPOINTS ====================
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
+// ==================== ADMIN JOB POSTING ====================
+app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') {
         return res.status(403).json({ success: false, message: 'Admin access required' });
     }
     
+    const { title, description, budget, location, category_id, external_provider_name, external_provider_phone, external_provider_email, preferred_date } = req.body;
+    
+    if (!title || !description || !category_id) {
+        return res.status(400).json({ success: false, message: 'Title, description, and category are required' });
+    }
+    
     try {
-        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, is_active, created_at FROM users ORDER BY created_at DESC`);
+        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        
+        const result = await pool.query(
+            `INSERT INTO job_posts (seeker_id, category_id, title, description, budget, location, preferred_date,
+                external_provider_name, external_provider_phone, external_provider_email, share_token, posted_by_admin, is_public, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true, 'open')
+             RETURNING *`,
+            [req.user.id, category_id, title, description, budget, location, preferred_date,
+             external_provider_name, external_provider_phone, external_provider_email, shareToken]
+        );
+        
+        const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
+        
+        res.json({ success: true, job: result.rows[0], shareable_link: shareableUrl });
+    } catch (error) {
+        console.error('Admin create job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==================== PUBLIC JOB ENDPOINTS ====================
+app.get('/api/public/job/:token', async (req, res) => {
+    const { token } = req.params;
+    
+    try {
+        const result = await pool.query(
+            `SELECT jp.*, c.name as category_name, c.icon as category_icon
+             FROM job_posts jp
+             JOIN categories c ON jp.category_id = c.id
+             WHERE jp.share_token = $1 AND jp.is_public = true`,
+            [token]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Job not found' });
+        }
+        
+        await pool.query('UPDATE job_posts SET view_count = view_count + 1 WHERE share_token = $1', [token]);
+        
+        res.json({ success: true, job: result.rows[0] });
+    } catch (error) {
+        console.error('Get public job error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/public/jobs', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT jp.id, jp.title, jp.budget, jp.location, jp.share_token, jp.view_count, jp.created_at,
+                   c.name as category_name, c.icon as category_icon
+            FROM job_posts jp
+            JOIN categories c ON jp.category_id = c.id
+            WHERE jp.is_public = true AND jp.status = 'open'
+            ORDER BY jp.created_at DESC
+        `);
+        res.json({ success: true, jobs: result.rows });
+    } catch (error) {
+        console.error('Get public jobs error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==================== ADMIN USER MANAGEMENT ====================
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') {
+        return res.status(403).json({ success: false });
+    }
+    
+    try {
+        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, created_at FROM users ORDER BY created_at DESC`);
         const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
         const providers = result.rows.filter(u => u.user_type === 'provider').length;
         res.json({ success: true, users: result.rows, total: result.rows.length, seekers, providers });
@@ -968,59 +1078,102 @@ app.get('/api/admin/users', authenticateToken, async (req, res) => {
     }
 });
 
-// Update user (admin)
 app.put('/api/admin/users/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
     const { id } = req.params;
-    const { full_name, phone, user_type, is_active } = req.body;
+    const { full_name, phone, location, user_type, is_active, is_verified } = req.body;
+    
     try {
-        await pool.query('UPDATE users SET full_name = $1, phone = $2, user_type = $3, is_active = $4 WHERE id = $5', [full_name, phone, user_type, is_active, id]);
+        await pool.query(
+            `UPDATE users SET full_name = $1, phone = $2, location = $3, user_type = $4, is_active = $5, is_verified = $6 WHERE id = $7`,
+            [full_name, phone, location, user_type, is_active, is_verified, id]
+        );
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Toggle user status (admin)
-app.put('/api/admin/users/:id/status', authenticateToken, async (req, res) => {
+app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
     const { id } = req.params;
-    const { is_active } = req.body;
+    
     try {
-        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [is_active, id]);
+        await pool.query('UPDATE users SET is_active = false WHERE id = $1', [id]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+app.put('/api/admin/users/:id/toggle-status', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    
+    try {
+        const current = await pool.query('SELECT is_active FROM users WHERE id = $1', [id]);
+        const newStatus = !current.rows[0].is_active;
+        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [newStatus, id]);
+        res.json({ success: true, is_active: newStatus });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    const { id } = req.params;
+    const { new_password } = req.body;
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(new_password, salt);
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==================== ADMIN JOB MANAGEMENT ====================
 app.get('/api/admin/jobs', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    
     try {
-        const result = await pool.query(`SELECT jp.*, u.full_name as seeker_name, (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count FROM job_posts jp LEFT JOIN users u ON jp.seeker_id = u.id ORDER BY jp.created_at DESC LIMIT 100`);
+        const result = await pool.query(`
+            SELECT jp.*, u.full_name as seeker_name, c.name as category_name,
+                   (SELECT COUNT(*) FROM bids WHERE job_post_id = jp.id) as bid_count
+            FROM job_posts jp
+            LEFT JOIN users u ON jp.seeker_id = u.id
+            LEFT JOIN categories c ON jp.category_id = c.id
+            ORDER BY jp.created_at DESC
+        `);
         res.json({ success: true, jobs: result.rows });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Update job (admin)
 app.put('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
     const { id } = req.params;
     const { title, description, budget, status } = req.body;
+    
     try {
-        await pool.query('UPDATE job_posts SET title = $1, description = $2, budget = $3, status = $4 WHERE id = $5', [title, description, budget, status, id]);
+        await pool.query(
+            `UPDATE job_posts SET title = $1, description = $2, budget = $3, status = $4 WHERE id = $5`,
+            [title, description, budget, status, id]
+        );
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Delete job (admin)
 app.delete('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
     const { id } = req.params;
+    
     try {
         await pool.query('DELETE FROM job_posts WHERE id = $1', [id]);
         res.json({ success: true });
@@ -1029,54 +1182,19 @@ app.delete('/api/admin/jobs/:id', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/api/admin/jobs/stats', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'open' THEN 1 END) as open, COUNT(CASE WHEN status = 'assigned' THEN 1 END) as assigned, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed FROM job_posts`);
-        res.json({ success: true, total: parseInt(result.rows[0].total) || 0, open: parseInt(result.rows[0].open) || 0, assigned: parseInt(result.rows[0].assigned) || 0, completed: parseInt(result.rows[0].completed) || 0 });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
+// ==================== COMMISSION ENDPOINTS ====================
 app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
+    
     try {
-        // Total earnings from completed jobs
         const totalResult = await pool.query(`
             SELECT COALESCE(SUM(platform_commission), 0) as total_earnings
-            FROM accepted_jobs 
-            WHERE status = 'completed'
-        `);
-        
-        // Today's earnings
-        const todayResult = await pool.query(`
-            SELECT COALESCE(SUM(platform_commission), 0) as today_earnings
-            FROM accepted_jobs 
-            WHERE status = 'completed' 
-            AND DATE(completed_at) = CURRENT_DATE
-        `);
-        
-        // This week's earnings
-        const weekResult = await pool.query(`
-            SELECT COALESCE(SUM(platform_commission), 0) as week_earnings
-            FROM accepted_jobs 
-            WHERE status = 'completed' 
-            AND completed_at >= DATE_TRUNC('week', CURRENT_DATE)
-        `);
-        
-        // This month's earnings
-        const monthResult = await pool.query(`
-            SELECT COALESCE(SUM(platform_commission), 0) as month_earnings
-            FROM accepted_jobs 
-            WHERE status = 'completed' 
-            AND completed_at >= DATE_TRUNC('month', CURRENT_DATE)
+            FROM accepted_jobs WHERE status = 'completed'
         `);
         
         const recentResult = await pool.query(`
-            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.completed_at, 
-                   COALESCE(p.full_name, 'Unknown') as provider_name, 
-                   COALESCE(s.full_name, 'Unknown') as seeker_name, 
+            SELECT aj.id, aj.agreed_amount, aj.platform_commission, aj.completed_at,
+                   p.full_name as provider_name, s.full_name as seeker_name,
                    COALESCE(jp.title, ps.title, 'Direct Hire') as job_title
             FROM accepted_jobs aj
             LEFT JOIN users p ON aj.provider_id = p.id
@@ -1088,16 +1206,12 @@ app.get('/api/commission/earnings', authenticateToken, async (req, res) => {
             LIMIT 20
         `);
         
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             total_earnings: parseFloat(totalResult.rows[0].total_earnings) || 0,
-            today_earnings: parseFloat(todayResult.rows[0].today_earnings) || 0,
-            week_earnings: parseFloat(weekResult.rows[0].week_earnings) || 0,
-            month_earnings: parseFloat(monthResult.rows[0].month_earnings) || 0,
             recent_transactions: recentResult.rows || []
         });
     } catch (error) {
-        console.error('Error getting earnings:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1115,156 +1229,73 @@ app.get('/api/commission/rate', authenticateToken, async (req, res) => {
 app.put('/api/commission/rate', authenticateToken, async (req, res) => {
     if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
     const { rate } = req.body;
-    if (!rate || rate < 0 || rate > 100) return res.status(400).json({ success: false, message: 'Rate must be between 0 and 100' });
+    
     try {
-        await pool.query(`INSERT INTO admin_settings (setting_key, setting_value, updated_at) VALUES ('commission_rate', $1, CURRENT_TIMESTAMP) ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`, [rate]);
+        await pool.query(
+            `INSERT INTO admin_settings (setting_key, setting_value, updated_at) 
+             VALUES ('commission_rate', $1, CURRENT_TIMESTAMP)
+             ON CONFLICT (setting_key) DO UPDATE SET setting_value = $1, updated_at = CURRENT_TIMESTAMP`,
+            [rate]
+        );
         res.json({ success: true, message: `Commission rate updated to ${rate}%` });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.get('/api/admin/services', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`SELECT ps.*, u.full_name as provider_name, c.name as category_name FROM provider_services ps LEFT JOIN users u ON ps.provider_id = u.id LEFT JOIN categories c ON ps.category_id = c.id WHERE ps.is_active = true ORDER BY ps.created_at DESC LIMIT 100`);
-        res.json({ success: true, services: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete service (admin)
-app.delete('/api/admin/services/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    try {
-        await pool.query('UPDATE provider_services SET is_active = false WHERE id = $1', [id]);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Revenue chart data (admin)
-app.get('/api/admin/revenue/chart', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`
-            SELECT DATE_TRUNC('month', completed_at) as month, COALESCE(SUM(platform_commission), 0) as revenue
-            FROM accepted_jobs WHERE status = 'completed' AND completed_at IS NOT NULL
-            GROUP BY DATE_TRUNC('month', completed_at) ORDER BY month DESC LIMIT 6
-        `);
-        const labels = result.rows.map(r => new Date(r.month).toLocaleDateString('en-US', { month: 'short' })).reverse();
-        const values = result.rows.map(r => parseFloat(r.revenue)).reverse();
-        res.json({ success: true, data: { labels, values } });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== CHAT SYSTEM (COMPLETELY REWRITTEN) ====================
-
-// Get or create conversation
-async function getOrCreateConversation(seekerId, providerId, jobId = null) {
-    // Check if conversation exists
-    const checkResult = await pool.query(
-        `SELECT * FROM conversations 
-         WHERE seeker_id = $1 AND provider_id = $2`,
+// ==================== CHAT SYSTEM ====================
+async function getOrCreateConversation(seekerId, providerId, jobId = null, directHireId = null) {
+    let result = await pool.query(
+        `SELECT * FROM conversations WHERE seeker_id = $1 AND provider_id = $2`,
         [seekerId, providerId]
     );
     
-    if (checkResult.rows.length > 0) {
-        return checkResult.rows[0];
+    if (result.rows.length > 0) {
+        return result.rows[0];
     }
     
-    // Create new conversation
     const insertResult = await pool.query(
-        `INSERT INTO conversations (seeker_id, provider_id, job_id, updated_at)
-         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        `INSERT INTO conversations (seeker_id, provider_id, job_id, direct_hire_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
          RETURNING *`,
-        [seekerId, providerId, jobId]
+        [seekerId, providerId, jobId || null, directHireId || null]
     );
     
     return insertResult.rows[0];
 }
 
-// Get all conversations for current user
-app.get('/api/conversations', authenticateToken, async (req, res) => {
-    try {
-        let query;
-        const userId = req.user.id;
-        
-        if (req.user.user_type === 'seeker') {
-            query = `
-                SELECT c.*, 
-                       u.full_name as other_user_name,
-                       u.email as other_user_email,
-                       (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = $1 AND is_read = false) as unread_count
-                FROM conversations c
-                JOIN users u ON c.provider_id = u.id
-                WHERE c.seeker_id = $1
-                ORDER BY c.updated_at DESC
-            `;
-        } else {
-            query = `
-                SELECT c.*, 
-                       u.full_name as other_user_name,
-                       u.email as other_user_email,
-                       (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND receiver_id = $1 AND is_read = false) as unread_count
-                FROM conversations c
-                JOIN users u ON c.seeker_id = u.id
-                WHERE c.provider_id = $1
-                ORDER BY c.updated_at DESC
-            `;
-        }
-        
-        const result = await pool.query(query, [userId]);
-        res.json({ success: true, conversations: result.rows });
-    } catch (error) {
-        console.error('Get conversations error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Start a new conversation (seeker)
 app.post('/api/conversations', authenticateToken, async (req, res) => {
-    const { provider_id, job_id } = req.body;
+    const { provider_id, job_id, direct_hire_id } = req.body;
     
     if (req.user.user_type !== 'seeker') {
-        return res.status(403).json({ success: false, message: 'Only seekers can start conversations' });
+        return res.status(403).json({ success: false, message: 'Only seekers can initiate conversations' });
     }
     
     try {
-        const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id);
+        const conversation = await getOrCreateConversation(req.user.id, provider_id, job_id, direct_hire_id);
         res.json({ success: true, conversation });
     } catch (error) {
-        console.error('Start conversation error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Start a new conversation (provider)
 app.post('/api/conversations/provider', authenticateToken, async (req, res) => {
-    const { seeker_id, job_id } = req.body;
+    const { seeker_id, job_id, direct_hire_id } = req.body;
     
     if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can start conversations' });
+        return res.status(403).json({ success: false, message: 'Only providers can initiate conversations' });
     }
     
     try {
-        const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id);
+        const conversation = await getOrCreateConversation(seeker_id, req.user.id, job_id, direct_hire_id);
         res.json({ success: true, conversation });
     } catch (error) {
-        console.error('Start conversation error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Send a message
 app.post('/api/messages', authenticateToken, async (req, res) => {
     const { conversation_id, receiver_id, message } = req.body;
-    
-    console.log('Send message request:', { conversation_id, receiver_id, message, user: req.user.id });
     
     if (!message || message.trim() === '') {
         return res.status(400).json({ success: false, message: 'Message cannot be empty' });
@@ -1275,67 +1306,42 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
         let receiverId = receiver_id;
         
         if (conversation_id) {
-            // Get existing conversation
-            const convResult = await pool.query(
-                'SELECT * FROM conversations WHERE id = $1',
-                [conversation_id]
-            );
-            
+            const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversation_id]);
             if (convResult.rows.length === 0) {
                 return res.status(404).json({ success: false, message: 'Conversation not found' });
             }
-            
             conversation = convResult.rows[0];
-            // Determine receiver based on who is sending
-            if (conversation.seeker_id === req.user.id) {
-                receiverId = conversation.provider_id;
-            } else {
-                receiverId = conversation.seeker_id;
-            }
+            receiverId = conversation.seeker_id === req.user.id ? conversation.provider_id : conversation.seeker_id;
         } else {
-            // Create new conversation
             if (!receiver_id) {
                 return res.status(400).json({ success: false, message: 'Receiver ID required' });
             }
-            
-            if (req.user.user_type === 'seeker') {
-                conversation = await getOrCreateConversation(req.user.id, receiver_id);
-            } else {
-                conversation = await getOrCreateConversation(receiver_id, req.user.id);
-            }
+            const seekerId = req.user.user_type === 'seeker' ? req.user.id : receiver_id;
+            const providerId = req.user.user_type === 'provider' ? req.user.id : receiver_id;
+            conversation = await getOrCreateConversation(seekerId, providerId);
             receiverId = receiver_id;
         }
         
-        // Insert message
         const result = await pool.query(
-            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO messages (conversation_id, sender_id, receiver_id, message, created_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
              RETURNING *`,
             [conversation.id, req.user.id, receiverId, message]
         );
         
-        // Update conversation last message and unread count
-        const updateQuery = `
-            UPDATE conversations 
-            SET last_message = $1, 
-                last_message_time = CURRENT_TIMESTAMP, 
-                updated_at = CURRENT_TIMESTAMP,
-                ${conversation.seeker_id === req.user.id ? 'provider_unread_count = provider_unread_count + 1' : 'seeker_unread_count = seeker_unread_count + 1'}
-            WHERE id = $2
-        `;
-        
-        await pool.query(updateQuery, [message, conversation.id]);
-        
-        // Get message with sender info
-        const messageWithSender = await pool.query(
-            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
-             FROM messages m 
-             JOIN users u ON m.sender_id = u.id 
-             WHERE m.id = $1`,
-            [result.rows[0].id]
+        await pool.query(
+            `UPDATE conversations 
+             SET last_message = $1, last_message_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
+                 ${req.user.user_type === 'seeker' ? 'seeker_unread_count = seeker_unread_count + 1' : 'provider_unread_count = provider_unread_count + 1'}
+             WHERE id = $2`,
+            [message, conversation.id]
         );
         
-        console.log('Message sent successfully:', messageWithSender.rows[0]);
+        const messageWithSender = await pool.query(
+            `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
+             FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = $1`,
+            [result.rows[0].id]
+        );
         
         res.json({ success: true, message: messageWithSender.rows[0] });
     } catch (error) {
@@ -1344,86 +1350,101 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     }
 });
 
-// Get messages for a conversation
 app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
     const { conversationId } = req.params;
     
     try {
-        // Verify access
-        const convResult = await pool.query(
-            'SELECT * FROM conversations WHERE id = $1',
-            [conversationId]
-        );
-        
+        const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversationId]);
         if (convResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Conversation not found' });
         }
         
         const conversation = convResult.rows[0];
-        
         if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
             return res.status(403).json({ success: false, message: 'Access denied' });
         }
         
-        // Get messages
         const messagesResult = await pool.query(
             `SELECT m.*, u.full_name as sender_name, u.user_type as sender_type
-             FROM messages m 
-             JOIN users u ON m.sender_id = u.id
-             WHERE m.conversation_id = $1 
-             ORDER BY m.created_at ASC`,
+             FROM messages m JOIN users u ON m.sender_id = u.id
+             WHERE m.conversation_id = $1 ORDER BY m.created_at ASC`,
             [conversationId]
         );
         
-        // Mark messages as read
         await pool.query(
-            `UPDATE messages 
-             SET is_read = true 
+            `UPDATE messages SET is_read = true, read_at = CURRENT_TIMESTAMP
              WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
             [conversationId, req.user.id]
         );
         
-        // Reset unread count for this user
         if (req.user.user_type === 'seeker') {
             await pool.query('UPDATE conversations SET seeker_unread_count = 0 WHERE id = $1', [conversationId]);
         } else {
             await pool.query('UPDATE conversations SET provider_unread_count = 0 WHERE id = $1', [conversationId]);
         }
         
-        res.json({ 
-            success: true, 
-            messages: messagesResult.rows, 
-            conversation 
-        });
+        res.json({ success: true, messages: messagesResult.rows, conversation });
     } catch (error) {
         console.error('Get messages error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Get unread message count
-app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+app.get('/api/conversations', authenticateToken, async (req, res) => {
     try {
-        let result;
+        let query;
+        let params = [req.user.id];
+        
         if (req.user.user_type === 'seeker') {
-            result = await pool.query(
-                'SELECT COALESCE(SUM(seeker_unread_count), 0) as total FROM conversations WHERE seeker_id = $1',
-                [req.user.id]
-            );
+            query = `
+                SELECT c.*, u.full_name as other_user_name, u.user_type as other_user_type,
+                       jp.title as job_title
+                FROM conversations c
+                JOIN users u ON c.provider_id = u.id
+                LEFT JOIN job_posts jp ON c.job_id = jp.id
+                WHERE c.seeker_id = $1
+                ORDER BY c.updated_at DESC
+            `;
         } else {
-            result = await pool.query(
-                'SELECT COALESCE(SUM(provider_unread_count), 0) as total FROM conversations WHERE provider_id = $1',
-                [req.user.id]
-            );
+            query = `
+                SELECT c.*, u.full_name as other_user_name, u.user_type as other_user_type,
+                       jp.title as job_title
+                FROM conversations c
+                JOIN users u ON c.seeker_id = u.id
+                LEFT JOIN job_posts jp ON c.job_id = jp.id
+                WHERE c.provider_id = $1
+                ORDER BY c.updated_at DESC
+            `;
         }
-        res.json({ success: true, unread_count: parseInt(result.rows[0].total) || 0 });
+        
+        const result = await pool.query(query, params);
+        
+        const conversationsWithUnread = result.rows.map(conv => ({
+            ...conv,
+            unread_count: req.user.user_type === 'seeker' ? conv.seeker_unread_count : conv.provider_unread_count
+        }));
+        
+        res.json({ success: true, conversations: conversationsWithUnread });
     } catch (error) {
-        console.error('Get unread count error:', error);
+        console.error('Get conversations error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Mark conversation as read
+app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
+    try {
+        let result;
+        if (req.user.user_type === 'seeker') {
+            result = await pool.query('SELECT COALESCE(SUM(seeker_unread_count), 0) as total FROM conversations WHERE seeker_id = $1', [req.user.id]);
+        } else {
+            result = await pool.query('SELECT COALESCE(SUM(provider_unread_count), 0) as total FROM conversations WHERE provider_id = $1', [req.user.id]);
+        }
+        res.json({ success: true, unread_count: parseInt(result.rows[0].total) || 0 });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.put('/api/conversations/:conversationId/read', authenticateToken, async (req, res) => {
     const { conversationId } = req.params;
     
@@ -1435,9 +1456,7 @@ app.put('/api/conversations/:conversationId/read', authenticateToken, async (req
         }
         
         await pool.query(
-            `UPDATE messages 
-             SET is_read = true 
-             WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
+            `UPDATE messages SET is_read = true WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false`,
             [conversationId, req.user.id]
         );
         
@@ -1447,71 +1466,82 @@ app.put('/api/conversations/:conversationId/read', authenticateToken, async (req
         res.status(500).json({ success: false, error: error.message });
     }
 });
-app.get('/api/conversations/:conversationId/messages', authenticateToken, async (req, res) => {
-    const { conversationId } = req.params;
+
+// ==================== PROVIDER PROFILE ENDPOINTS ====================
+app.get('/api/provider/:id/profile', async (req, res) => {
+    const { id } = req.params;
     
-    const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [conversationId]);
-    if (convResult.rows.length === 0) {
-        return res.status(404).json({ success: false, message: 'Conversation not found' });
+    try {
+        const userResult = await pool.query(`
+            SELECT id, full_name, email, location, rating, total_reviews, 
+                   bio, company_name, years_experience, response_time, verified, created_at
+            FROM users 
+            WHERE id = $1 AND user_type = 'provider' AND is_active = true
+        `, [id]);
+        
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Provider not found' });
+        }
+        
+        const servicesResult = await pool.query(`
+            SELECT ps.*, c.name as category_name, c.icon as category_icon
+            FROM provider_services ps
+            JOIN categories c ON ps.category_id = c.id
+            WHERE ps.provider_id = $1 AND ps.is_active = true
+            ORDER BY ps.created_at DESC
+        `, [id]);
+        
+        const reviewsResult = await pool.query(`
+            SELECT r.*, u.full_name as reviewer_name
+            FROM reviews r
+            JOIN users u ON r.reviewer_id = u.id
+            WHERE r.reviewee_id = $1
+            ORDER BY r.created_at DESC
+            LIMIT 20
+        `, [id]);
+        
+        const statsResult = await pool.query(`
+            SELECT COUNT(DISTINCT aj.id) as completed_jobs
+            FROM accepted_jobs aj
+            WHERE aj.provider_id = $1 AND aj.status = 'completed'
+        `, [id]);
+        
+        res.json({
+            success: true,
+            provider: userResult.rows[0],
+            services: servicesResult.rows,
+            reviews: reviewsResult.rows,
+            stats: { completed_jobs: parseInt(statsResult.rows[0].completed_jobs) || 0 }
+        });
+    } catch (error) {
+        console.error('Get provider profile error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
-    
-    const conversation = convResult.rows[0];
-    if (conversation.seeker_id !== req.user.id && conversation.provider_id !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-    
-    const messagesResult = await pool.query(
-        `SELECT m.*, u.full_name as sender_name
-         FROM messages m JOIN users u ON m.sender_id = u.id
-         WHERE m.conversation_id = $1 ORDER BY m.created_at ASC`,
-        [conversationId]
-    );
-    
-    res.json({ success: true, messages: messagesResult.rows, conversation });
 });
 
-app.get('/api/conversations', authenticateToken, async (req, res) => {
-    let query;
-    if (req.user.user_type === 'seeker') {
-        query = `
-            SELECT c.*, u.full_name as other_user_name
-            FROM conversations c
-            JOIN users u ON c.provider_id = u.id
-            WHERE c.seeker_id = $1
-            ORDER BY c.updated_at DESC
-        `;
-    } else {
-        query = `
-            SELECT c.*, u.full_name as other_user_name
-            FROM conversations c
-            JOIN users u ON c.seeker_id = u.id
-            WHERE c.provider_id = $1
-            ORDER BY c.updated_at DESC
-        `;
+app.put('/api/provider/profile', authenticateToken, async (req, res) => {
+    if (req.user.user_type !== 'provider') {
+        return res.status(403).json({ success: false, message: 'Only providers can update their profile' });
     }
     
-    const result = await pool.query(query, [req.user.id]);
-    res.json({ success: true, conversations: result.rows });
-});
-
-app.get('/api/messages/unread-count', authenticateToken, async (req, res) => {
-    res.json({ success: true, unread_count: 0 });
-});
-
-// ==================== TEST EMAIL ENDPOINT ====================
-app.post('/api/test-email', authenticateToken, async (req, res) => {
-    const { email } = req.body;
+    const { bio, company_name, years_experience, response_time, location } = req.body;
     
-    if (!email) {
-        return res.status(400).json({ success: false, message: 'Email is required' });
+    try {
+        await pool.query(`
+            UPDATE users 
+            SET bio = COALESCE($1, bio),
+                company_name = COALESCE($2, company_name),
+                years_experience = COALESCE($3, years_experience),
+                response_time = COALESCE($4, response_time),
+                location = COALESCE($5, location)
+            WHERE id = $6
+        `, [bio, company_name, years_experience, response_time, location, req.user.id]);
+        
+        res.json({ success: true, message: 'Profile updated successfully' });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
-    
-    const result = await sendEmail(email, 'welcome', { 
-        name: 'Test User', 
-        userType: 'seeker' 
-    });
-    
-    res.json({ success: result, message: result ? 'Email sent successfully!' : 'Failed to send email' });
 });
 
 // ==================== HEALTH CHECK ====================
@@ -1582,1124 +1612,28 @@ app.get('/admin-dashboard.html', (req, res) => {
     if (filePath) res.sendFile(filePath);
     else res.status(404).send('File not found');
 });
-// ==================== ADVANCED USER MANAGEMENT ====================
 
-// Get all users with filters (admin)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { search, type, status, limit = 50 } = req.query;
-    
-    try {
-        let query = `SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE 1=1`;
-        let params = [];
-        
-        if (search) {
-            params.push(`%${search}%`);
-            query += ` AND (full_name ILIKE $${params.length} OR email ILIKE $${params.length})`;
-        }
-        if (type && type !== 'all') {
-            params.push(type);
-            query += ` AND user_type = $${params.length}`;
-        }
-        if (status === 'active') {
-            query += ` AND is_active = true`;
-        } else if (status === 'inactive') {
-            query += ` AND is_active = false`;
-        }
-        
-        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-        params.push(limit);
-        
-        const result = await pool.query(query, params);
-        
-        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
-        const providers = result.rows.filter(u => u.user_type === 'provider').length;
-        const admins = result.rows.filter(u => u.user_type === 'admin').length;
-        
-        res.json({ 
-            success: true, 
-            users: result.rows, 
-            total: result.rows.length,
-            seekers, providers, admins,
-            active: result.rows.filter(u => u.is_active).length,
-            inactive: result.rows.filter(u => !u.is_active).length
-        });
-    } catch (error) {
-        console.error('Error getting users:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
+app.get('/provider-profile.html', (req, res) => {
+    const filePath = findHtmlFile('provider-profile.html');
+    if (filePath) res.sendFile(filePath);
+    else res.status(404).send('File not found');
 });
 
-// Get single user details (admin)
-app.get('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    try {
-        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE id = $1`, [id]);
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-        res.json({ success: true, user: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+app.get('/job-board.html', (req, res) => {
+    const filePath = findHtmlFile('job-board.html');
+    if (filePath) res.sendFile(filePath);
+    else res.status(404).send('File not found');
 });
 
-// Create new user (admin)
-app.post('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { email, password, full_name, phone, location, user_type } = req.body;
-    if (!email || !password || !full_name) {
-        return res.status(400).json({ success: false, message: 'Email, password, and full name required' });
-    }
-    try {
-        const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-        if (existing.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'User already exists' });
-        }
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const result = await pool.query(
-            `INSERT INTO users (email, password_hash, full_name, phone, location, user_type, is_verified)
-             VALUES ($1, $2, $3, $4, $5, $6, true)
-             RETURNING id, email, full_name, user_type`,
-            [email, hashedPassword, full_name, phone, location, user_type || 'seeker']
-        );
-        res.json({ success: true, user: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+app.get('/job-view.html', (req, res) => {
+    const filePath = findHtmlFile('job-view.html');
+    if (filePath) res.sendFile(filePath);
+    else res.status(404).send('File not found');
 });
 
-// Update user (admin)
-app.put('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    const { full_name, phone, location, user_type, is_active, is_verified, rating } = req.body;
-    try {
-        await pool.query(
-            `UPDATE users SET full_name = COALESCE($1, full_name), phone = COALESCE($2, phone), location = COALESCE($3, location), user_type = COALESCE($4, user_type), is_active = COALESCE($5, is_active), is_verified = COALESCE($6, is_verified), rating = COALESCE($7, rating) WHERE id = $8`,
-            [full_name, phone, location, user_type, is_active, is_verified, rating, id]
-        );
-        res.json({ success: true, message: 'User updated successfully' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete user (admin - soft delete)
-app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    try {
-        await pool.query('UPDATE users SET is_active = false WHERE id = $1', [id]);
-        res.json({ success: true, message: 'User deactivated successfully' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Toggle user status (activate/deactivate)
-app.put('/api/admin/users/:id/toggle-status', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    try {
-        const current = await pool.query('SELECT is_active FROM users WHERE id = $1', [id]);
-        if (current.rows.length === 0) return res.status(404).json({ success: false });
-        const newStatus = !current.rows[0].is_active;
-        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [newStatus, id]);
-        res.json({ success: true, is_active: newStatus, message: newStatus ? 'User activated' : 'User deactivated' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Reset user password (admin)
-app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    const { new_password } = req.body;
-    if (!new_password || new_password.length < 4) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 4 characters' });
-    }
-    try {
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(new_password, salt);
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, id]);
-        res.json({ success: true, message: 'Password reset successfully' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get user statistics (admin)
-app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN user_type = 'seeker' THEN 1 END) as seekers,
-                COUNT(CASE WHEN user_type = 'provider' THEN 1 END) as providers,
-                COUNT(CASE WHEN user_type = 'admin' THEN 1 END) as admins,
-                COUNT(CASE WHEN is_active = true THEN 1 END) as active,
-                COUNT(CASE WHEN is_active = false THEN 1 END) as inactive,
-                COUNT(CASE WHEN is_verified = true THEN 1 END) as verified,
-                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as new_this_week,
-                COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as new_this_month
-            FROM users
-        `);
-        res.json({ success: true, stats: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== FIXED USER MANAGEMENT ENDPOINTS ====================
-
-// Get all users with filters (admin)
-app.get('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { search, type, status, limit = 100 } = req.query;
-    
-    try {
-        let query = `SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE 1=1`;
-        let params = [];
-        
-        if (search) {
-            params.push(`%${search}%`);
-            query += ` AND (full_name ILIKE $${params.length} OR email ILIKE $${params.length})`;
-        }
-        if (type && type !== 'all') {
-            params.push(type);
-            query += ` AND user_type = $${params.length}`;
-        }
-        if (status === 'active') {
-            query += ` AND is_active = true`;
-        } else if (status === 'inactive') {
-            query += ` AND is_active = false`;
-        }
-        
-        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-        params.push(limit);
-        
-        const result = await pool.query(query, params);
-        
-        const seekers = result.rows.filter(u => u.user_type === 'seeker').length;
-        const providers = result.rows.filter(u => u.user_type === 'provider').length;
-        const admins = result.rows.filter(u => u.user_type === 'admin').length;
-        const active = result.rows.filter(u => u.is_active === true).length;
-        
-        res.json({ 
-            success: true, 
-            users: result.rows, 
-            total: result.rows.length,
-            seekers, providers, admins,
-            active,
-            inactive: result.rows.length - active
-        });
-    } catch (error) {
-        console.error('Error getting users:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get single user details (admin)
-app.get('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    try {
-        const result = await pool.query(`SELECT id, email, full_name, phone, location, user_type, is_active, is_verified, rating, total_reviews, created_at, last_login FROM users WHERE id = $1`, [id]);
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-        res.json({ success: true, user: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Create new user (admin)
-app.post('/api/admin/users', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { email, password, full_name, phone, location, user_type } = req.body;
-    if (!email || !password || !full_name) {
-        return res.status(400).json({ success: false, message: 'Email, password, and full name required' });
-    }
-    try {
-        const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-        if (existing.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'User already exists' });
-        }
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const result = await pool.query(
-            `INSERT INTO users (email, password_hash, full_name, phone, location, user_type, is_verified)
-             VALUES ($1, $2, $3, $4, $5, $6, true)
-             RETURNING id, email, full_name, user_type`,
-            [email, hashedPassword, full_name, phone || '', location || '', user_type || 'seeker']
-        );
-        res.json({ success: true, user: result.rows[0], message: 'User created successfully' });
-    } catch (error) {
-        console.error('Create user error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update user (admin) - FIXED
-app.put('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    const { full_name, phone, location, user_type, is_active, is_verified, rating } = req.body;
-    
-    console.log(`Updating user ${id}:`, { full_name, phone, location, user_type, is_active, is_verified, rating });
-    
-    try {
-        // First check if user exists
-        const checkUser = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
-        if (checkUser.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        
-        // Build dynamic update query
-        const updates = [];
-        const values = [];
-        let paramCount = 1;
-        
-        if (full_name !== undefined) { updates.push(`full_name = $${paramCount++}`); values.push(full_name); }
-        if (phone !== undefined) { updates.push(`phone = $${paramCount++}`); values.push(phone); }
-        if (location !== undefined) { updates.push(`location = $${paramCount++}`); values.push(location); }
-        if (user_type !== undefined) { updates.push(`user_type = $${paramCount++}`); values.push(user_type); }
-        if (is_active !== undefined) { updates.push(`is_active = $${paramCount++}`); values.push(is_active); }
-        if (is_verified !== undefined) { updates.push(`is_verified = $${paramCount++}`); values.push(is_verified); }
-        if (rating !== undefined) { updates.push(`rating = $${paramCount++}`); values.push(rating); }
-        
-        if (updates.length === 0) {
-            return res.status(400).json({ success: false, message: 'No fields to update' });
-        }
-        
-        values.push(id);
-        const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`;
-        
-        await pool.query(query, values);
-        
-        console.log(`✅ User ${id} updated successfully`);
-        res.json({ success: true, message: 'User updated successfully' });
-    } catch (error) {
-        console.error('Update user error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete user (admin) - HARD DELETE (FIXED)
-app.delete('/api/admin/users/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    
-    // Don't allow deleting yourself
-    if (parseInt(id) === req.user.id) {
-        return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
-    }
-    
-    try {
-        // Check if user exists
-        const checkUser = await pool.query('SELECT id, full_name, user_type FROM users WHERE id = $1', [id]);
-        if (checkUser.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        
-        const user = checkUser.rows[0];
-        
-        // Don't allow deleting admin if only one admin
-        if (user.user_type === 'admin') {
-            const adminCount = await pool.query("SELECT COUNT(*) FROM users WHERE user_type = 'admin'");
-            if (parseInt(adminCount.rows[0].count) <= 1) {
-                return res.status(400).json({ success: false, message: 'Cannot delete the only admin account' });
-            }
-        }
-        
-        // Soft delete - set is_active to false (recommended)
-        await pool.query('UPDATE users SET is_active = false WHERE id = $1', [id]);
-        
-        console.log(`✅ User ${user.full_name} (ID: ${id}) has been deactivated`);
-        res.json({ success: true, message: `User "${user.full_name}" has been deactivated` });
-    } catch (error) {
-        console.error('Delete user error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Toggle user status (activate/deactivate) - FIXED
-app.put('/api/admin/users/:id/toggle-status', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    
-    // Don't allow toggling your own status
-    if (parseInt(id) === req.user.id) {
-        return res.status(400).json({ success: false, message: 'You cannot change your own status' });
-    }
-    
-    try {
-        const current = await pool.query('SELECT is_active, full_name FROM users WHERE id = $1', [id]);
-        if (current.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-        
-        const newStatus = !current.rows[0].is_active;
-        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [newStatus, id]);
-        
-        const message = newStatus ? `User "${current.rows[0].full_name}" has been activated` : `User "${current.rows[0].full_name}" has been deactivated`;
-        console.log(`✅ ${message}`);
-        res.json({ success: true, is_active: newStatus, message: message });
-    } catch (error) {
-        console.error('Toggle user status error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Reset user password (admin)
-app.post('/api/admin/users/:id/reset-password', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    const { id } = req.params;
-    const { new_password } = req.body;
-    if (!new_password || new_password.length < 4) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 4 characters' });
-    }
-    try {
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(new_password, salt);
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, id]);
-        res.json({ success: true, message: 'Password reset successfully' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get user statistics (admin)
-app.get('/api/admin/users/stats', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') return res.status(403).json({ success: false });
-    try {
-        const result = await pool.query(`
-            SELECT 
-                COUNT(*) as total,
-                COUNT(CASE WHEN user_type = 'seeker' THEN 1 END) as seekers,
-                COUNT(CASE WHEN user_type = 'provider' THEN 1 END) as providers,
-                COUNT(CASE WHEN user_type = 'admin' THEN 1 END) as admins,
-                COUNT(CASE WHEN is_active = true THEN 1 END) as active,
-                COUNT(CASE WHEN is_active = false THEN 1 END) as inactive,
-                COUNT(CASE WHEN is_verified = true THEN 1 END) as verified
-            FROM users
-        `);
-        res.json({ success: true, stats: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== PROVIDER PUBLIC PROFILE ENDPOINTS ====================
-
-// ==================== PROVIDER PROFILE ENDPOINTS ====================
-
-// Get provider public profile (anyone can view)
-app.get('/api/provider/:id/profile', async (req, res) => {
-    const { id } = req.params;
-    
-    try {
-        // Get provider details
-        const userResult = await pool.query(`
-            SELECT id, full_name, email, location, rating, total_reviews, 
-                   bio, profile_image, cover_image, company_name, years_experience,
-                   completed_jobs, response_time, verified, created_at
-            FROM users 
-            WHERE id = $1 AND user_type = 'provider' AND is_active = true
-        `, [id]);
-        
-        if (userResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Provider not found' });
-        }
-        
-        const provider = userResult.rows[0];
-        
-        // Get provider services
-        const servicesResult = await pool.query(`
-            SELECT ps.*, c.name as category_name, c.icon as category_icon
-            FROM provider_services ps
-            JOIN categories c ON ps.category_id = c.id
-            WHERE ps.provider_id = $1 AND ps.is_active = true
-            ORDER BY ps.created_at DESC
-        `, [id]);
-        
-        // Get portfolio items
-        const portfolioResult = await pool.query(`
-            SELECT * FROM portfolio_items 
-            WHERE provider_id = $1 
-            ORDER BY created_at DESC
-        `, [id]);
-        
-        // Get reviews
-        const reviewsResult = await pool.query(`
-            SELECT r.*, u.full_name as reviewer_name
-            FROM reviews r
-            JOIN users u ON r.reviewer_id = u.id
-            WHERE r.reviewee_id = $1
-            ORDER BY r.created_at DESC
-            LIMIT 20
-        `, [id]);
-        
-        // Get stats
-        const statsResult = await pool.query(`
-            SELECT 
-                COUNT(DISTINCT aj.id) as total_jobs,
-                COUNT(DISTINCT CASE WHEN aj.status = 'completed' THEN aj.id END) as completed_jobs,
-                COALESCE(SUM(aj.agreed_amount), 0) as total_earnings
-            FROM accepted_jobs aj
-            WHERE aj.provider_id = $1
-        `, [id]);
-        
-        res.json({
-            success: true,
-            provider: provider,
-            services: servicesResult.rows,
-            portfolio: portfolioResult.rows,
-            reviews: reviewsResult.rows,
-            stats: statsResult.rows[0]
-        });
-    } catch (error) {
-        console.error('Error getting provider profile:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get own profile for editing (authenticated provider)
-app.get('/api/provider/my-profile', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can access their profile' });
-    }
-    
-    try {
-        const result = await pool.query(`
-            SELECT id, full_name, email, phone, location, bio, company_name, 
-                   years_experience, response_time, profile_image, cover_image
-            FROM users 
-            WHERE id = $1 AND user_type = 'provider'
-        `, [req.user.id]);
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Profile not found' });
-        }
-        
-        res.json({ success: true, profile: result.rows[0] });
-    } catch (error) {
-        console.error('Error getting own profile:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Update provider profile (authenticated provider)
-app.put('/api/provider/profile', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can update their profile' });
-    }
-    
-    const { bio, company_name, years_experience, response_time, location, phone } = req.body;
-    
-    try {
-        await pool.query(`
-            UPDATE users 
-            SET bio = COALESCE($1, bio),
-                company_name = COALESCE($2, company_name),
-                years_experience = COALESCE($3, years_experience),
-                response_time = COALESCE($4, response_time),
-                location = COALESCE($5, location),
-                phone = COALESCE($6, phone)
-            WHERE id = $7
-        `, [bio, company_name, years_experience, response_time, location, phone, req.user.id]);
-        
-        res.json({ success: true, message: 'Profile updated successfully' });
-    } catch (error) {
-        console.error('Error updating profile:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Add portfolio item
-app.post('/api/provider/portfolio', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false, message: 'Only providers can add portfolio items' });
-    }
-    
-    const { title, description, image_url } = req.body;
-    
-    if (!title) {
-        return res.status(400).json({ success: false, message: 'Title is required' });
-    }
-    
-    try {
-        const result = await pool.query(`
-            INSERT INTO portfolio_items (provider_id, title, description, image_url)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-        `, [req.user.id, title, description, image_url]);
-        
-        res.json({ success: true, portfolio: result.rows[0] });
-    } catch (error) {
-        console.error('Error adding portfolio:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete portfolio item
-app.delete('/api/provider/portfolio/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { id } = req.params;
-    
-    try {
-        await pool.query('DELETE FROM portfolio_items WHERE id = $1 AND provider_id = $2', [id, req.user.id]);
-        res.json({ success: true, message: 'Portfolio item deleted' });
-    } catch (error) {
-        console.error('Error deleting portfolio:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Contact provider
-app.post('/api/provider/:id/contact', async (req, res) => {
-    const { id } = req.params;
-    const { name, email, phone, message } = req.body;
-    
-    if (!name || !email || !message) {
-        return res.status(400).json({ success: false, message: 'Name, email, and message are required' });
-    }
-    
-    try {
-        await pool.query(`
-            INSERT INTO contact_requests (provider_id, name, email, phone, message)
-            VALUES ($1, $2, $3, $4, $5)
-        `, [id, name, email, phone, message]);
-        
-        // Get provider email for notification
-        const providerResult = await pool.query('SELECT email FROM users WHERE id = $1', [id]);
-        if (providerResult.rows.length > 0 && process.env.EMAIL_USER) {
-            // Send email notification (optional)
-            console.log(`Contact message sent to provider ${id} from ${email}`);
-        }
-        
-        res.json({ success: true, message: 'Message sent successfully!' });
-    } catch (error) {
-        console.error('Error sending contact message:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get provider's contact requests (provider only)
-app.get('/api/provider/contact-requests', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'provider') {
-        return res.status(403).json({ success: false });
-    }
-    
-    try {
-        const result = await pool.query(`
-            SELECT * FROM contact_requests 
-            WHERE provider_id = $1 
-            ORDER BY created_at DESC
-        `, [req.user.id]);
-        
-        // Mark as read
-        await pool.query(`
-            UPDATE contact_requests SET is_read = true 
-            WHERE provider_id = $1 AND is_read = false
-        `, [req.user.id]);
-        
-        res.json({ success: true, requests: result.rows });
-    } catch (error) {
-        console.error('Error getting contact requests:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== ADMIN CHAT MANAGEMENT ENDPOINTS ====================
-
-// Get all conversations for admin (with details)
-app.get('/api/admin/conversations', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { search, limit = 50, offset = 0 } = req.query;
-    
-    try {
-        let query = `
-            SELECT 
-                c.id,
-                c.job_id,
-                c.seeker_id,
-                c.provider_id,
-                c.created_at,
-                c.updated_at,
-                c.last_message,
-                c.last_message_time,
-                s.full_name as seeker_name,
-                s.email as seeker_email,
-                p.full_name as provider_name,
-                p.email as provider_email,
-                COALESCE(jp.title, 'Direct Chat') as job_title,
-                (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count
-            FROM conversations c
-            JOIN users s ON c.seeker_id = s.id
-            JOIN users p ON c.provider_id = p.id
-            LEFT JOIN job_posts jp ON c.job_id = jp.id
-            WHERE 1=1
-        `;
-        
-        const params = [];
-        
-        if (search) {
-            params.push(`%${search}%`);
-            query += ` AND (s.full_name ILIKE $${params.length} OR p.full_name ILIKE $${params.length} OR s.email ILIKE $${params.length} OR p.email ILIKE $${params.length})`;
-        }
-        
-        query += ` ORDER BY c.updated_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-        params.push(limit, offset);
-        
-        const result = await pool.query(query, params);
-        
-        // Get total count
-        const countResult = await pool.query('SELECT COUNT(*) FROM conversations');
-        
-        res.json({ 
-            success: true, 
-            conversations: result.rows,
-            total: parseInt(countResult.rows[0].count)
-        });
-    } catch (error) {
-        console.error('Error getting conversations:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get all messages for a specific conversation (admin view)
-app.get('/api/admin/conversations/:id/messages', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { id } = req.params;
-    
-    try {
-        const convResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [id]);
-        if (convResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Conversation not found' });
-        }
-        
-        const messagesResult = await pool.query(`
-            SELECT m.*, 
-                   u.full_name as sender_name,
-                   u.email as sender_email,
-                   u.user_type as sender_type
-            FROM messages m 
-            JOIN users u ON m.sender_id = u.id
-            WHERE m.conversation_id = $1 
-            ORDER BY m.created_at ASC
-        `, [id]);
-        
-        res.json({ success: true, messages: messagesResult.rows, conversation: convResult.rows[0] });
-    } catch (error) {
-        console.error('Error getting messages:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Flag a message (admin or users can report)
-app.post('/api/messages/:id/flag', authenticateToken, async (req, res) => {
-    const { id } = req.params;
-    const { reason } = req.body;
-    
-    try {
-        await pool.query(
-            `UPDATE messages SET is_flagged = true, flagged_by = $1, flagged_reason = $2 WHERE id = $3`,
-            [req.user.id, reason, id]
-        );
-        
-        // Create report record
-        await pool.query(
-            `INSERT INTO chat_reports (message_id, reporter_id, reason)
-             VALUES ($1, $2, $3)`,
-            [id, req.user.id, reason]
-        );
-        
-        res.json({ success: true, message: 'Message reported successfully' });
-    } catch (error) {
-        console.error('Error flagging message:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Delete/block a message (admin only)
-app.delete('/api/admin/messages/:id', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { id } = req.params;
-    
-    try {
-        await pool.query('UPDATE messages SET is_deleted = true WHERE id = $1', [id]);
-        res.json({ success: true, message: 'Message deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting message:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get chat analytics
-app.get('/api/admin/chat-analytics', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false });
-    }
-    
-    const { days = 30 } = req.query;
-    
-    try {
-        const result = await pool.query(`
-            SELECT 
-                date,
-                total_messages,
-                unique_conversations,
-                active_users,
-                flagged_messages,
-                avg_response_time
-            FROM chat_analytics
-            WHERE date > CURRENT_DATE - INTERVAL '${days} days'
-            ORDER BY date DESC
-        `);
-        
-        // Get overall stats
-        const statsResult = await pool.query(`
-            SELECT 
-                COUNT(DISTINCT c.id) as total_conversations,
-                COUNT(m.id) as total_messages,
-                COUNT(DISTINCT m.sender_id) as active_users,
-                COUNT(CASE WHEN m.is_flagged = true THEN 1 END) as flagged_messages
-            FROM conversations c
-            LEFT JOIN messages m ON c.id = m.conversation_id
-        `);
-        
-        res.json({ 
-            success: true, 
-            daily_data: result.rows,
-            overall: statsResult.rows[0]
-        });
-    } catch (error) {
-        console.error('Error getting chat analytics:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ==================== ADMIN JOB POSTING FOR PROVIDERS ====================
-
-// Admin creates a job for a provider (Public Job Board)
-app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { 
-        title, description, budget, location, category_id,
-        external_provider_name, external_provider_phone, external_provider_email,
-        preferred_date 
-    } = req.body;
-    
-    if (!title || !description || !category_id) {
-        return res.status(400).json({ success: false, message: 'Title, description, and category are required' });
-    }
-    
-    try {
-        // Generate unique share token
-        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-        
-        const result = await pool.query(
-            `INSERT INTO job_posts (
-                seeker_id, category_id, title, description, budget, location, preferred_date,
-                external_provider_name, external_provider_phone, external_provider_email,
-                share_token, posted_by_admin, is_public, status
-             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true, 'open'
-             ) RETURNING *`,
-            [req.user.id, category_id, title, description, budget, location, preferred_date,
-             external_provider_name, external_provider_phone, external_provider_email,
-             shareToken]
-        );
-        
-        const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
-        
-        res.json({ 
-            success: true, 
-            job: result.rows[0],
-            shareable_link: shareableUrl
-        });
-    } catch (error) {
-        console.error('Admin create job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-// ==================== PUBLIC JOB BOARD ENDPOINTS ====================
-
-// Get public job by share token (no authentication required)
-app.get('/api/public/job/:token', async (req, res) => {
-    const { token } = req.params;
-    
-    console.log(`🔍 Looking for job with token: ${token}`);
-    
-    try {
-        const result = await pool.query(
-            `SELECT jp.*, c.name as category_name, c.icon as category_icon
-             FROM job_posts jp
-             JOIN categories c ON jp.category_id = c.id
-             WHERE jp.share_token = $1 AND jp.is_public = true`,
-            [token]
-        );
-        
-        if (result.rows.length === 0) {
-            console.log(`❌ Job not found for token: ${token}`);
-            return res.status(404).json({ success: false, message: 'Job not found' });
-        }
-        
-        console.log(`✅ Job found: ${result.rows[0].title}`);
-        
-        // Increment view count
-        await pool.query('UPDATE job_posts SET view_count = view_count + 1 WHERE share_token = $1', [token]);
-        
-        res.json({ success: true, job: result.rows[0] });
-    } catch (error) {
-        console.error('Get public job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get all public jobs (for job board listing)
-app.get('/api/public/jobs', async (req, res) => {
-    const { category, location, limit = 20 } = req.query;
-    
-    try {
-        let query = `
-            SELECT jp.id, jp.title, jp.budget, jp.location, jp.share_token, jp.view_count, jp.created_at,
-                   c.name as category_name, c.icon as category_icon
-            FROM job_posts jp
-            JOIN categories c ON jp.category_id = c.id
-            WHERE jp.is_public = true AND jp.status = 'open'
-        `;
-        let params = [];
-        let paramCount = 1;
-        
-        if (category) {
-            query += ` AND jp.category_id = $${paramCount}`;
-            params.push(category);
-            paramCount++;
-        }
-        if (location) {
-            query += ` AND jp.location ILIKE $${paramCount}`;
-            params.push(`%${location}%`);
-            paramCount++;
-        }
-        
-        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
-        params.push(limit);
-        
-        const result = await pool.query(query, params);
-        res.json({ success: true, jobs: result.rows });
-    } catch (error) {
-        console.error('Get public jobs error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ==================== ADMIN JOB POSTING (CONNECTED TO MARKETPLACE) ====================
-
-// Admin creates a job (UPDATED to ensure posted_by_admin = true)
-app.post('/api/admin/jobs/create', authenticateToken, async (req, res) => {
-    if (req.user.user_type !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin access required' });
-    }
-    
-    const { 
-        title, description, budget, location, category_id,
-        external_provider_name, external_provider_phone, external_provider_email,
-        preferred_date 
-    } = req.body;
-    
-    if (!title || !description || !category_id) {
-        return res.status(400).json({ success: false, message: 'Title, description, and category are required' });
-    }
-    
-    try {
-        // Generate unique share token
-        const shareToken = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-        
-        // Insert into job_posts with posted_by_admin = true
-        const result = await pool.query(
-            `INSERT INTO job_posts (
-                seeker_id, category_id, title, description, budget, location, preferred_date,
-                external_provider_name, external_provider_phone, external_provider_email,
-                share_token, posted_by_admin, is_public, status
-             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true, 'open'
-             ) RETURNING *`,
-            [req.user.id, category_id, title, description, budget, location, preferred_date,
-             external_provider_name, external_provider_phone, external_provider_email,
-             shareToken]
-        );
-        
-        const shareableUrl = `${process.env.APP_URL || 'https://service-connect-7akg.onrender.com'}/job-view.html?token=${shareToken}`;
-        
-        console.log(`✅ Admin posted job: ${title} (ID: ${result.rows[0].id}) - posted_by_admin = true`);
-        
-        res.json({ 
-            success: true, 
-            job: result.rows[0],
-            shareable_link: shareableUrl,
-            message: 'Job posted! It will appear in both Public Job Board and Marketplace.'
-        });
-    } catch (error) {
-        console.error('Admin create job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get public job by share token (for job-view.html)
-app.get('/api/public/job/:token', async (req, res) => {
-    const { token } = req.params;
-    
-    try {
-        const result = await pool.query(
-            `SELECT jp.*, c.name as category_name, c.icon as category_icon
-             FROM job_posts jp
-             JOIN categories c ON jp.category_id = c.id
-             WHERE jp.share_token = $1 AND jp.is_public = true`,
-            [token]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Job not found' });
-        }
-        
-        // Increment view count
-        await pool.query('UPDATE job_posts SET view_count = view_count + 1 WHERE share_token = $1', [token]);
-        
-        res.json({ success: true, job: result.rows[0] });
-    } catch (error) {
-        console.error('Get public job error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Get all public jobs (for job board listing)
-app.get('/api/public/jobs', async (req, res) => {
-    const { category, location, limit = 20 } = req.query;
-    
-    try {
-        let query = `
-            SELECT jp.id, jp.title, jp.budget, jp.location, jp.share_token, jp.view_count, jp.created_at,
-                   c.name as category_name, c.icon as category_icon
-            FROM job_posts jp
-            JOIN categories c ON jp.category_id = c.id
-            WHERE jp.is_public = true AND jp.status = 'open'
-        `;
-        let params = [];
-        let paramCount = 1;
-        
-        if (category) {
-            query += ` AND jp.category_id = $${paramCount}`;
-            params.push(category);
-            paramCount++;
-        }
-        if (location) {
-            query += ` AND jp.location ILIKE $${paramCount}`;
-            params.push(`%${location}%`);
-            paramCount++;
-        }
-        
-        query += ` ORDER BY jp.created_at DESC LIMIT $${paramCount}`;
-        params.push(limit);
-        
-        const result = await pool.query(query, params);
-        res.json({ success: true, jobs: result.rows });
-    } catch (error) {
-        console.error('Get public jobs error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// ==================== FIXED MARKETPLACE API - RETURNS JOBS TOO ====================
-app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
-    try {
-        console.log('Marketplace request from user:', req.user.id, req.user.user_type);
-        
-        // PROVIDER VIEW - Only their own services
-        if (req.user.user_type === 'provider') {
-            const result = await pool.query(`
-                SELECT 
-                    ps.id,
-                    ps.title,
-                    ps.description,
-                    ps.price,
-                    ps.provider_id,
-                    'service' as item_type
-                FROM provider_services ps
-                WHERE ps.provider_id = $1 AND ps.is_active = true
-                ORDER BY ps.created_at DESC
-            `, [req.user.id]);
-            
-            console.log(`Provider ${req.user.id}: ${result.rows.length} services`);
-            return res.json(result.rows);
-        }
-        
-        // SEEKER VIEW - All services from all providers AND public jobs
-        const services = await pool.query(`
-            SELECT 
-                ps.id,
-                ps.title,
-                ps.description,
-                ps.price,
-                ps.provider_id,
-                u.full_name as provider_name,
-                u.location as provider_location,
-                COALESCE(u.rating, 0)::float as provider_rating,
-                'service' as item_type
-            FROM provider_services ps
-            JOIN users u ON ps.provider_id = u.id
-            WHERE ps.is_active = true
-            ORDER BY ps.created_at DESC
-        `);
-        
-        const jobs = await pool.query(`
-            SELECT 
-                jp.id,
-                jp.title,
-                jp.description,
-                jp.budget as price,
-                COALESCE(jp.external_provider_name, 'Service Connect') as provider_name,
-                jp.location as provider_location,
-                'job' as item_type
-            FROM job_posts jp
-            WHERE jp.status = 'open' AND jp.is_public = true
-            ORDER BY jp.created_at DESC
-        `);
-        
-        const allItems = [...services.rows, ...jobs.rows];
-        
-        console.log(`Seeker view: ${services.rows.length} services, ${jobs.rows.length} jobs`);
-        
-        res.json(allItems);
-    } catch (error) {
-        console.error('Marketplace error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
     console.log(`🌐 https://service-connect-7akg.onrender.com\n`);
-    console.log(`📧 Email notifications: ${process.env.EMAIL_USER ? 'ENABLED' : 'DISABLED (add EMAIL_USER)'}`);
+    console.log(`📧 Email notifications: ${process.env.EMAIL_USER ? 'ENABLED' : 'DISABLED'}`);
 });
