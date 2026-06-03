@@ -2632,7 +2632,6 @@ app.get('/api/public/jobs', async (req, res) => {
 });
 
 // ==================== MARKETPLACE API (SHOWS BOTH SERVICES AND JOBS) ====================
-
 app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
     try {
         // Get services from providers
@@ -2663,10 +2662,9 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
             WHERE jp.is_public = true AND jp.status = 'open' AND jp.posted_by_admin = true
         `);
         
-        // Combine results
         const allItems = [...services.rows, ...jobs.rows];
         
-        console.log(`📊 Marketplace API: ${services.rows.length} services, ${jobs.rows.length} jobs`);
+        console.log(`📊 Marketplace: ${services.rows.length} services, ${jobs.rows.length} jobs`);
         
         res.json(allItems);
     } catch (error) {
