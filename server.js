@@ -2745,7 +2745,7 @@ app.get('/api/services/marketplace', authenticateToken, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-});
+
 // ==================== START SERVER ====================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n✅ Server running on port ${PORT}`);
